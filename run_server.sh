@@ -3,9 +3,9 @@
 # FastAPI Server Runner for Linux
 echo "--- FODES FastAPI Server ---"
 
-# Check if .venv exists
-if [ ! -d ".venv" ]; then
-    echo "[INFO] .venv directory not found. Creating virtual environment..."
+# Check if .venv/bin/activate exists
+if [ ! -f ".venv/bin/activate" ]; then
+    echo "[INFO] Virtual environment not found or invalid for Linux. Creating/Repairing..."
     python3 -m venv .venv
     
     echo "[INFO] Installing dependencies..."
