@@ -28,5 +28,6 @@ echo "[INFO] Running in background (nohup). Logs: server.log"
 # Run the server in the background
 nohup uvicorn app.server:app --host 0.0.0.0 --port 8080 > server.log 2>&1 &
 
+
 echo "[INFO] Server PID: $!"
 echo "To stop the server, run: kill $!"
