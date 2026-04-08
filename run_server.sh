@@ -22,8 +22,11 @@ else
     source .venv/bin/activate
 fi
 
-echo "[INFO] Starting FastAPI on http://127.0.0.1:8000"
-echo "Press Ctrl+C to stop the server."
+echo "[INFO] Starting FastAPI on http://0.0.0.0:8080"
+echo "[INFO] Running in background (nohup). Logs: server.log"
 
-# Run the server
-uvicorn app.server:app --reload --host 0.0.0.0 --port 8000
+# Run the server in the background
+nohup uvicorn app.server:app --host 0.0.0.0 --port 8080 > server.log 2>&1 &
+
+echo "[INFO] Server PID: $!"
+echo "To stop the server, run: kill $!"
