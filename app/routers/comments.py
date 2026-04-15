@@ -22,7 +22,7 @@ async def set_comment(
     request: Request,
     comment: CommentCreate,
     db: Session = Depends(get_db),
-    id_autor: int = Depends(verifySession)
+    id_autor: str = Depends(verifySession)
 ):
     """
     Registers a new comment metadata and links it to a publication CID.
@@ -93,7 +93,7 @@ async def get_publication_comments(
     limit: int = 100,
     offset: int = 0,
     db: Session = Depends(get_db),
-    id_user: int = Depends(verifySession)
+    id_user: str = Depends(verifySession)
 ):
     """
     Retrieves all comment CIDs associated with a specific publication.
@@ -131,7 +131,7 @@ async def vote_comment(
     request: Request,
     vote_data: CommentVote,
     db: Session = Depends(get_db),
-    id_user: int = Depends(verifySession)
+    id_user: str = Depends(verifySession)
 ):
     """
     Submit or update a 0-5 rating for a comment.
@@ -168,7 +168,7 @@ async def get_comments_rating(
     request: Request,
     batch: RatingBatchConsult,
     db: Session = Depends(get_db),
-    id_user: int = Depends(verifySession)
+    id_user: str = Depends(verifySession)
 ):
     """
     Batch retrieve average ratings and total votes for a list of comments.

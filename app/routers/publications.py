@@ -23,7 +23,7 @@ async def set_publication(
     request: Request,
     pub: PublicationCreate,
     db: Session = Depends(get_db),
-    id_autor: int = Depends(verifySession)
+    id_autor: str = Depends(verifySession)
 ):
     """
     Registers a new publication metadata in the database and generates a CID.
@@ -56,8 +56,16 @@ async def set_publication(
         id_categoria = cat_result[0]
         curr_date = datetime.now()
 
-        # Usar el CID generado por el gateway P2P
-        cid_content = pub.cid_content
+        # Generate CID server-side
+        # We include all relevant data to ensure a deterministic but unique CID
+        cid_payload = {
+            "title": pub.title,
+            "content": pub.content,
+            "id_autor": str(id_autor),
+            "category": pub.category,
+            "timestamp": curr_date.isoformat()
+        }
+        cid_content = generateCid(cid_payload)
 
         # Index publication metadata
         query_pub = text("""
@@ -89,7 +97,7 @@ async def set_publication(
             "message": "Publicación indexada correctamente",
             "data": {
                 "cid_content": cid_content,
-                "content": cid_payload
+                "payload": cid_payload
             }
         }
     except HTTPException:
@@ -106,7 +114,7 @@ async def search_publications_cids(
     categoria: Optional[str] = Query(None),
     tags: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
-    id_user: int = Depends(verifySession)
+    id_user: str = Depends(verifySession)
 ):
     """
     Search for publication CIDs based on multiple filters.
@@ -161,7 +169,7 @@ async def vote_publication(
     request: Request,
     vote_data: PublicationVote,
     db: Session = Depends(get_db),
-    id_user: int = Depends(verifySession)
+    id_user: str = Depends(verifySession)
 ):
     """
     Submit or update a 0-5 rating for a publication.
@@ -199,7 +207,7 @@ async def get_publications_rating(
     request: Request,
     batch: RatingBatchConsult,
     db: Session = Depends(get_db),
-    id_user: int = Depends(verifySession)
+    id_user: str = Depends(verifySession)
 ):
     """
     Batch retrieve average ratings and total votes for a list of publications.
