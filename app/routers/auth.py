@@ -67,13 +67,13 @@ async def register(
     - **nombre**: Full name.
     - **correo**: Unique email address.
     - **password**: Plain text password.
-    - **boleta**: Student ID.
+    - **boleta**: Student ID (used as primary key).
     - **url_saes**: Mandatory URL from SAES QR.
     """
     try:
-        # Check if email or boleta is already taken
+        # Check if email or id (boleta) is already taken
         query_check = text(
-            "SELECT id FROM usuarios WHERE correo = :correo OR boleta = :boleta")
+            "SELECT id FROM usuarios WHERE correo = :correo OR id = :boleta")
         existing_user = db.execute(query_check, {
             "correo": user_data.correo,
             "boleta": user_data.boleta
@@ -97,15 +97,15 @@ async def register(
         # Hash password and insert user
         hashed_password = genHashPassword(user_data.password)
         query_insert = text("""
-            INSERT INTO usuarios (nombre, correo, password, boleta, is_verified) 
-            VALUES (:nombre, :correo, :password_hash, :boleta, :is_verified) 
+            INSERT INTO usuarios (id, nombre, correo, password, is_verified) 
+            VALUES (:boleta, :nombre, :correo, :password_hash, :is_verified) 
         """)
 
         db.execute(query_insert, {
+            "boleta": user_data.boleta,
             "nombre": user_data.nombre,
             "correo": user_data.correo,
             "password_hash": hashed_password,
-            "boleta": user_data.boleta,
             "is_verified": True
         })
         db.commit()

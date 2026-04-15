@@ -6,11 +6,10 @@ USE FODES2;
 
 -- Table for user management
 CREATE TABLE IF NOT EXISTS usuarios (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id VARCHAR(20) PRIMARY KEY, -- id is the boleta
     nombre VARCHAR(255) NOT NULL,
     correo VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    boleta VARCHAR(20) UNIQUE,
     is_verified BOOLEAN DEFAULT FALSE
 );
 
@@ -23,7 +22,7 @@ CREATE TABLE IF NOT EXISTS categories (
 -- Table for publications metadata (CIDs are the links to P2P content)
 CREATE TABLE IF NOT EXISTS publications (
     cid_content VARCHAR(255) PRIMARY KEY,
-    id_autor INT NOT NULL,
+    id_autor VARCHAR(20) NOT NULL,
     id_categoria INT NOT NULL,
     titulo VARCHAR(255) NOT NULL,
     fecha DATETIME NOT NULL,
@@ -45,7 +44,7 @@ CREATE TABLE IF NOT EXISTS publicacion_tags (
 CREATE TABLE IF NOT EXISTS comments (
     cid_content VARCHAR(255) PRIMARY KEY,
     publication_cid VARCHAR(255) NOT NULL,
-    id_autor INT NOT NULL,
+    id_autor VARCHAR(20) NOT NULL,
     titulo VARCHAR(255) NOT NULL,
     created_timestamp DATETIME NOT NULL,
     INDEX (publication_cid),
@@ -65,7 +64,7 @@ CREATE TABLE IF NOT EXISTS comentario_tags (
 -- Table for publication votes (0-5 range)
 CREATE TABLE IF NOT EXISTS publication_votes (
     cid_content VARCHAR(255) NOT NULL,
-    id_usuario INT NOT NULL,
+    id_usuario VARCHAR(20) NOT NULL,
     puntos TINYINT NOT NULL CHECK (puntos BETWEEN 0 AND 5),
     PRIMARY KEY (cid_content, id_usuario),
     FOREIGN KEY (cid_content) REFERENCES publications(cid_content) ON DELETE CASCADE,
@@ -75,7 +74,7 @@ CREATE TABLE IF NOT EXISTS publication_votes (
 -- Table for comment votes (0-5 range)
 CREATE TABLE IF NOT EXISTS comment_votes (
     cid_content VARCHAR(255) NOT NULL,
-    id_usuario INT NOT NULL,
+    id_usuario VARCHAR(20) NOT NULL,
     puntos TINYINT NOT NULL CHECK (puntos BETWEEN 0 AND 5),
     PRIMARY KEY (cid_content, id_usuario),
     FOREIGN KEY (cid_content) REFERENCES comments(cid_content) ON DELETE CASCADE,
