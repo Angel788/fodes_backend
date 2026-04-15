@@ -1,3 +1,4 @@
+from app.routers import auth, publications, comments, network
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -8,7 +9,6 @@ from dotenv import load_dotenv, find_dotenv
 # Load environment variables from .env file
 load_dotenv(find_dotenv())
 
-from app.routers import auth, publications, comments, network
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="FODES API 2026")
@@ -30,7 +30,3 @@ app.include_router(auth.router)
 app.include_router(publications.router)
 app.include_router(comments.router)
 app.include_router(network.router)
-
-@app.get("/")
-async def root():
-    return {"message": "FODES Secure API is running", "version": "1.0.0"}
