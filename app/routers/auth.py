@@ -69,6 +69,7 @@ async def register(
     """
     try:
         # Check if email or id (boleta) is already taken
+        print(user_data)
         query_check = text(
             "SELECT id FROM usuarios WHERE correo = :correo OR id = :boleta")
         existing_user = db.execute(query_check, {
