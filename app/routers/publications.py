@@ -8,7 +8,6 @@ from slowapi.util import get_remote_address
 
 from app.db.database import get_db
 from app.auth.auth import verifySession
-from app.p2p.cid import generateCid
 from app.interfaces.PublicationsCreate import PublicationCreate
 from app.interfaces.PublicationsVote import PublicationVote
 from app.interfaces.RatingBatchConsult import RatingBatchConsult
@@ -34,16 +33,6 @@ async def set_publication(
     - **category**: Publication category (must exist in categories table).
     """
     try:
-        # Get author name for CID generation
-        query_user = text("SELECT nombre FROM usuarios WHERE id = :id")
-        user_result = db.execute(query_user, {"id": id_autor}).fetchone()
-
-        if not user_result:
-            raise HTTPException(
-                status_code=404, detail="Usuario no encontrado")
-
-        nombre_autor = user_result[0]
-
         # Verify category exists
         query_get_cat = text("SELECT id FROM categories WHERE name = :name")
         cat_result = db.execute(
@@ -55,17 +44,7 @@ async def set_publication(
 
         id_categoria = cat_result[0]
         curr_date = datetime.now()
-
-        # Generate CID server-side
-        # We include all relevant data to ensure a deterministic but unique CID
-        cid_payload = {
-            "title": pub.title,
-            "content": pub.content,
-            "id_autor": str(id_autor),
-            "category": pub.category,
-            "timestamp": curr_date.isoformat()
-        }
-        cid_content = generateCid(cid_payload)
+        cid_content = pub.cid_content
 
         # Index publication metadata
         query_pub = text("""
