@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nombre VARCHAR(255) NOT NULL,
     correo VARCHAR(255) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL
+    password VARCHAR(255) NOT NULL,
+    boleta VARCHAR(20) UNIQUE,
+    is_verified BOOLEAN DEFAULT FALSE
 );
 
 -- Table for publication categories
