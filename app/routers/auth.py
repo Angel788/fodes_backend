@@ -44,7 +44,8 @@ async def login(
         access_token = genTokenUser(user.id)
         return {
             "access_token": access_token,
-            "token_type": "bearer"
+            "token_type": "bearer",
+            "nombre": user.nombre
         }
     except HTTPException:
         raise
