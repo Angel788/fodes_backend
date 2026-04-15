@@ -91,6 +91,11 @@ async def register(
                 status_code=400,
                 detail=f"Error de verificación SAES: {str(e)}"
             )
+        if (not resultado):
+            raise HTTPException(
+                status_code=400,
+                detail="El correo electrónico o la boleta ya están registrados."
+            )
 
         # Hash password and insert user
         hashed_password = genHashPassword(user_data.password)
@@ -106,7 +111,7 @@ async def register(
             "password_hash": hashed_password,
         })
         db.commit()
-
+        print(resultado)
         return {
             "status": "success",
             "message": "Usuario registrado y verificado exitosamente",
