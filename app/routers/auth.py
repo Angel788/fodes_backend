@@ -8,6 +8,7 @@ from app.db.database import get_db
 from app.auth.auth import genHashPassword, verifyPassword, genTokenUser
 from app.interfaces.UserLogin import UserLogin
 from app.interfaces.UserRegister import UserRegister
+from app.interfaces.UserResetPassword import UserResetPassword
 
 router = APIRouter(prefix="", tags=["Authentication"])
 limiter = Limiter(key_func=get_remote_address)
@@ -100,3 +101,57 @@ async def register(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error interno al registrar: {str(e)}")
+
+
+def _normalizar(s: str) -> str:
+    import unicodedata
+    s = unicodedata.normalize('NFD', s)
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    return s.lower().replace('-', ' ')
+
+
+@router.post("/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(
+    request: Request,
+    data: UserResetPassword,
+    db: Session = Depends(get_db)
+):
+    """
+    Resets the password of a user after verifying their identity via SAES name.
+    - **correo**: Institutional email.
+    - **new_password**: New password (plain text, will be hashed).
+    - **nombre_saes**: Full name returned by SAES validation.
+    """
+    try:
+        query = text("SELECT id, nombre FROM usuarios WHERE correo = :correo")
+        user = db.execute(query, {"correo": data.correo}).fetchone()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="No existe una cuenta con ese correo")
+
+        # Verify that SAES name contains all words from the stored name
+        tokens_saes = _normalizar(data.nombre_saes).split()
+        tokens_db   = _normalizar(user.nombre).split()
+        coincide = all(t in tokens_saes for t in tokens_db if t)
+
+        if not coincide:
+            raise HTTPException(
+                status_code=400,
+                detail="El nombre del comprobante SAES no coincide con el registrado en tu cuenta"
+            )
+
+        hashed = genHashPassword(data.new_password)
+        db.execute(
+            text("UPDATE usuarios SET password = :pwd WHERE id = :id"),
+            {"pwd": hashed, "id": user.id}
+        )
+        db.commit()
+
+        return {"status": "success", "message": "Contraseña actualizada correctamente"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
