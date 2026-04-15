@@ -30,7 +30,7 @@ async def login(
     try:
         # Check if user exists and verify password
         query_user = text(
-            "SELECT id, nombre, password, is_verified FROM usuarios WHERE correo = :correo")
+            "SELECT id, nombre, password FROM usuarios WHERE correo = :correo")
         user = db.execute(query_user, {"correo": user_data.correo}).fetchone()
 
         if not user or not verifyPassword(user_data.password, user.password):
