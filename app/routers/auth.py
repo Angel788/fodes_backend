@@ -44,10 +44,7 @@ async def login(
         access_token = genTokenUser(user.id)
         return {
             "access_token": access_token,
-            "token_type": "bearer",
-            "nombre": user.nombre,
-            "is_verified": bool(user.is_verified),
-            "message": "Inicio de sesión exitoso"
+            "token_type": "bearer"
         }
     except HTTPException:
         raise
@@ -97,8 +94,8 @@ async def register(
         # Hash password and insert user
         hashed_password = genHashPassword(user_data.password)
         query_insert = text("""
-            INSERT INTO usuarios (id, nombre, correo, password, is_verified) 
-            VALUES (:boleta, :nombre, :correo, :password_hash, :is_verified) 
+            INSERT INTO usuarios (id, nombre, correo, password) 
+            VALUES (:boleta, :nombre, :correo, :password_hash) 
         """)
 
         db.execute(query_insert, {
@@ -106,7 +103,6 @@ async def register(
             "nombre": user_data.nombre,
             "correo": user_data.correo,
             "password_hash": hashed_password,
-            "is_verified": True
         })
         db.commit()
 
