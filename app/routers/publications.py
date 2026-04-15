@@ -56,17 +56,8 @@ async def set_publication(
         id_categoria = cat_result[0]
         curr_date = datetime.now()
 
-        # Prepare payload and generate CID v1
-        cid_payload = {
-            "title": pub.title,
-            "content": pub.content,
-            "date": curr_date.isoformat(),
-            "author": nombre_autor,
-            "tags": pub.tags,
-            "category": pub.category
-        }
-
-        cid_content = generateCid(cid_payload)
+        # Usar el CID generado por el gateway P2P
+        cid_content = pub.cid_content
 
         # Index publication metadata
         query_pub = text("""
