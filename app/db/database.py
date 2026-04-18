@@ -16,7 +16,11 @@ SQLALCHEMY_DATABASE_URL = "mysql+pymysql://{0}:{1}@{2}:{3}/{4}".format(
     user, password, host, port, database
 )
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_pre_ping=True,   # verifica la conexión antes de usarla
+    pool_recycle=1800,    # recicla conexiones cada 30 min (antes del wait_timeout de MySQL)
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
