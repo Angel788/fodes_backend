@@ -170,9 +170,19 @@ async def vote_publication(
         })
 
         db.commit()
+
+        # Devolver el nuevo promedio para que la UI lo muestre inmediatamente
+        avg_query = text("""
+            SELECT AVG(puntos) as average, COUNT(*) as count
+            FROM publication_votes
+            WHERE cid_content = :cid_content
+        """)
+        row = db.execute(avg_query, {"cid_content": vote_data.cid_content}).fetchone()
         return {
             "status": "success",
-            "message": "Voto registrado correctamente (0-5)"
+            "message": "Voto registrado correctamente (0-5)",
+            "average_rating": float(row.average) if row and row.average else 0,
+            "total_votes": row.count if row else 0,
         }
     except Exception as e:
         db.rollback()
