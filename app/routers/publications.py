@@ -206,10 +206,10 @@ async def get_publications_rating(
         if not batch.cids:
             raise HTTPException(status_code=400, detail="No CIDs provided")
 
-        # Group by CID to calculate averages in one go
+        # Global averages for all requested CIDs
         query = text("""
-            SELECT cid_content, AVG(puntos) as average, COUNT(*) as count 
-            FROM publication_votes 
+            SELECT cid_content, AVG(puntos) as average, COUNT(*) as count
+            FROM publication_votes
             WHERE cid_content IN :cid_list
             GROUP BY cid_content
         """)
@@ -217,13 +217,25 @@ async def get_publications_rating(
 
         ratings = {row.cid_content: {
             "average_rating": float(row.average) if row.average else 0,
-            "total_votes": row.count
+            "total_votes": row.count,
+            "my_vote": None,
         } for row in result}
 
         # Ensure all requested CIDs are in the response even if they have no votes
         for cid in batch.cids:
             if cid not in ratings:
-                ratings[cid] = {"average_rating": 0, "total_votes": 0}
+                ratings[cid] = {"average_rating": 0, "total_votes": 0, "my_vote": None}
+
+        # Add the calling user's own vote for each CID
+        my_votes_query = text("""
+            SELECT cid_content, puntos
+            FROM publication_votes
+            WHERE cid_content IN :cid_list AND id_usuario = :id_user
+        """)
+        my_votes = db.execute(my_votes_query, {"cid_list": tuple(batch.cids), "id_user": id_user}).fetchall()
+        for row in my_votes:
+            if row.cid_content in ratings:
+                ratings[row.cid_content]["my_vote"] = int(row.puntos)
 
         return {
             "status": "success",
