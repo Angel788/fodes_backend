@@ -157,13 +157,13 @@ async def vote_publication(
     - **vote**: Rating points (0 to 5).
     """
     try:
-        # Use ON DUPLICATE KEY UPDATE to allow changing the vote
-        query_vote = text("""
+        # ON DUPLICATE KEY UPDATE: si el usuario ya votó, actualiza su voto (no agrega uno nuevo)
+        # La tabla tiene unique(cid_content, id_usuario) — siempre 1 fila por usuario por publicación
+        db.execute(text("""
             INSERT INTO publication_votes (cid_content, id_usuario, puntos)
             VALUES (:cid_content, :id_usuario, :puntos)
             ON DUPLICATE KEY UPDATE puntos = VALUES(puntos)
-        """)
-        db.execute(query_vote, {
+        """), {
             "cid_content": vote_data.cid_content,
             "id_usuario": id_user,
             "puntos": vote_data.vote
