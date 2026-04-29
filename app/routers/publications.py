@@ -76,7 +76,6 @@ async def set_publication(
             "message": "Publicación indexada correctamente",
             "data": {
                 "cid_content": cid_content,
-                "payload": cid_payload
             }
         }
     except HTTPException:
