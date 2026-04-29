@@ -83,7 +83,7 @@ async def register(
                 detail="El correo electrónico o la boleta ya están registrados."
             )
 
-        # Mandatory SAES validation
+        # Validación SAES obligatoria
         try:
             resultado = await validar_desde_url(user_data.boleta, user_data.url_saes)
         except Exception as e:
@@ -91,17 +91,17 @@ async def register(
                 status_code=400,
                 detail=f"Error de verificación SAES: {str(e)}"
             )
-        if (not resultado):
+        if not resultado:
             raise HTTPException(
                 status_code=400,
-                detail="El correo electrónico o la boleta ya están registrados."
+                detail="No se pudo verificar la identidad en SAES."
             )
 
         # Hash password and insert user
         hashed_password = genHashPassword(user_data.password)
         query_insert = text("""
-            INSERT INTO usuarios (id, nombre, correo, password) 
-            VALUES (:boleta, :nombre, :correo, :password_hash) 
+            INSERT INTO usuarios (id, nombre, correo, password)
+            VALUES (:boleta, :nombre, :correo, :password_hash)
         """)
 
         db.execute(query_insert, {
@@ -117,10 +117,6 @@ async def register(
             "data": {
                 "id_usuario": user_data.boleta,
                 "correo": user_data.correo,
-                "nombre": resultado.nombre,
-                "programa": resultado.programa,
-                "periodo": resultado.periodo,
-                "materias": resultado.materias
             }
         }
     except HTTPException:
