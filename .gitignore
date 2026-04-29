@@ -10,3 +10,5 @@ venv/
 .env
 psk.key
 swarm.key
+
+app/routers/dev.py
