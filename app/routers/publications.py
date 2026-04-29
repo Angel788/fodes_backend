@@ -8,6 +8,7 @@ from slowapi.util import get_remote_address
 
 from app.db.database import get_db
 from app.auth.auth import verifySession
+from app.dependencies import verifyActiveSession
 from app.interfaces.PublicationsCreate import PublicationCreate
 from app.interfaces.PublicationsVote import PublicationVote
 from app.interfaces.RatingBatchConsult import RatingBatchConsult
@@ -22,7 +23,7 @@ async def set_publication(
     request: Request,
     pub: PublicationCreate,
     db: Session = Depends(get_db),
-    id_autor: str = Depends(verifySession)
+    id_autor: str = Depends(verifyActiveSession)
 ):
     """
     Registers a new publication metadata in the database and generates a CID.

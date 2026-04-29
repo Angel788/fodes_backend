@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from app.auth.auth import verifySession
 from app.db.database import get_db
+from app.dependencies import recover_suspension
 
 router = APIRouter(prefix="/moderation", tags=["Moderation"])
 limiter = Limiter(key_func=get_remote_address)
@@ -118,15 +119,6 @@ def _eliminate_user_content(db: Session, user_id: str) -> None:
     """), {"id": user_id})
 
 
-def _check_suspended_recover(db: Session, user_id: str) -> None:
-    """Si la suspensión temporal venció, restaura al usuario a NORMAL."""
-    db.execute(text("""
-        UPDATE usuarios
-        SET status='NORMAL', ban_until=NULL
-        WHERE id=:id AND status='SUSPENDIDO' AND ban_until IS NOT NULL AND ban_until <= NOW()
-    """), {"id": user_id})
-    db.commit()
-
 
 # ── Endpoints ────────────────────────────────────────────────
 
@@ -136,7 +128,7 @@ async def get_my_status(
     id_user: str = Depends(verifySession)
 ):
     """Devuelve el estado actual del alumno autenticado."""
-    _check_suspended_recover(db, id_user)
+    recover_suspension(db, id_user)
     row = db.execute(text("""
         SELECT status, strikes_count, ban_until
         FROM usuarios WHERE id=:id

@@ -7,6 +7,7 @@ from slowapi.util import get_remote_address
 
 from app.db.database import get_db
 from app.auth.auth import verifySession
+from app.dependencies import verifyActiveSession
 from app.p2p.cid import generateCid
 from app.interfaces.CommentCreate import CommentCreate
 from app.interfaces.CommentVote import CommentVote
@@ -22,7 +23,7 @@ async def set_comment(
     request: Request,
     comment: CommentCreate,
     db: Session = Depends(get_db),
-    id_autor: str = Depends(verifySession)
+    id_autor: str = Depends(verifyActiveSession)
 ):
     """
     Registers a new comment metadata and links it to a publication CID.
