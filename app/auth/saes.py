@@ -98,7 +98,7 @@ async def validar_desde_url(id: str, url_saes: str) -> ResultadoValidacion:
     except:
         raise Exception('URL inválida.')
 
-    if url_obj.netloc != 'www.saes.escom.ipn.mx':
+    if url_obj.hostname != 'www.saes.escom.ipn.mx':
         raise Exception('La URL no es de SAES ESCOM.')
 
     datos = await scrape_datos_horario(url_saes)
