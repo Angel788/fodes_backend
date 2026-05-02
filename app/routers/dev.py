@@ -1,10 +1,15 @@
 import os
+import hashlib
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.db.database import get_db
 from app.auth.auth import genHashPassword, genTokenUser
+
+def _fake_cid(seed: str) -> str:
+    """Genera un CID-like determinista para pruebas."""
+    return "bafyrei" + hashlib.sha256(seed.encode()).hexdigest()[:52]
 
 router = APIRouter(prefix="/dev", tags=["Dev"])
 
@@ -93,6 +98,47 @@ def seed_moderation(db: Session = Depends(get_db), _=Depends(_check_secret)):
     }
 
 
+@router.post("/seed_publications")
+def seed_publications(db: Session = Depends(get_db), _=Depends(_check_secret)):
+    """
+    Crea 3 publicaciones de prueba para el usuario Seed Objetivo.
+    Requiere haber corrido /dev/seed primero.
+    """
+    objetivo = db.execute(
+        text("SELECT id FROM usuarios WHERE correo = :c"),
+        {"c": f"objetivo{_SEED_MARKER}"}
+    ).fetchone()
+    if not objetivo:
+        raise HTTPException(status_code=404, detail="Corre /dev/seed primero")
+
+    cat = db.execute(text("SELECT id FROM categories LIMIT 1")).fetchone()
+    if not cat:
+        raise HTTPException(status_code=404, detail="No hay categorías en la BD")
+
+    PUBS = [
+        {"titulo": "Publicación de prueba 1", "tags": ["test", "seed"]},
+        {"titulo": "Publicación de prueba 2", "tags": ["prueba"]},
+        {"titulo": "Publicación de prueba 3", "tags": ["seed", "moderacion"]},
+    ]
+
+    cids = []
+    for i, p in enumerate(PUBS):
+        cid = _fake_cid(f"seed-pub-{objetivo.id}-{i}")
+        db.execute(text("""
+            INSERT IGNORE INTO publications (cid_content, id_autor, id_categoria, titulo, fecha)
+            VALUES (:cid, :autor, :cat, :titulo, NOW())
+        """), {"cid": cid, "autor": objetivo.id, "cat": cat.id, "titulo": p["titulo"]})
+        for tag in p["tags"]:
+            db.execute(text("""
+                INSERT IGNORE INTO publicacion_tags (id_publicacion, nombre_tag)
+                VALUES (:cid, :tag)
+            """), {"cid": cid, "tag": tag})
+        cids.append(cid)
+
+    db.commit()
+    return {"status": "success", "cids": cids, "autor_id": objetivo.id}
+
+
 @router.delete("/cleanup")
 def cleanup_seed(db: Session = Depends(get_db), _=Depends(_check_secret)):
     """Elimina todos los datos de prueba generados por /dev/seed."""
@@ -104,6 +150,17 @@ def cleanup_seed(db: Session = Depends(get_db), _=Depends(_check_secret)):
         return {"status": "success", "eliminados": 0}
 
     id_list = tuple(r.id for r in seed_ids)
+
+    pub_cids = db.execute(text("""
+        SELECT cid_content FROM publications WHERE id_autor IN :ids
+    """), {"ids": id_list}).fetchall()
+
+    if pub_cids:
+        cid_list = tuple(r.cid_content for r in pub_cids)
+        db.execute(text("DELETE FROM publicacion_tags WHERE id_publicacion IN :cids"), {"cids": cid_list})
+        db.execute(text("DELETE FROM publication_votes WHERE cid_content IN :cids"),   {"cids": cid_list})
+        db.execute(text("DELETE FROM content_status WHERE cid IN :cids"),              {"cids": cid_list})
+        db.execute(text("DELETE FROM publications WHERE cid_content IN :cids"),        {"cids": cid_list})
 
     db.execute(text("DELETE FROM user_moderation_votes WHERE voter_id IN :ids"),   {"ids": id_list})
     db.execute(text("DELETE FROM user_moderation_cases WHERE target_id IN :ids"),  {"ids": id_list})
