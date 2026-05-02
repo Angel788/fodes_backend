@@ -19,11 +19,11 @@ _PASSWORD    = "Seed1234!"
 _HASH        = genHashPassword(_PASSWORD)
 
 SEED_USERS = [
-    {"nombre": "Seed Objetivo",  "correo": f"objetivo{_SEED_MARKER}",  "boleta": "9999000001"},
-    {"nombre": "Seed Reporter1", "correo": f"reporter1{_SEED_MARKER}", "boleta": "9999000002"},
-    {"nombre": "Seed Reporter2", "correo": f"reporter2{_SEED_MARKER}", "boleta": "9999000003"},
-    {"nombre": "Seed Votante1",  "correo": f"votante1{_SEED_MARKER}",  "boleta": "9999000004"},
-    {"nombre": "Seed Votante2",  "correo": f"votante2{_SEED_MARKER}",  "boleta": "9999000005"},
+    {"nombre": "Seed Objetivo",  "correo": f"objetivo{_SEED_MARKER}",  "id": 9999000001},
+    {"nombre": "Seed Reporter1", "correo": f"reporter1{_SEED_MARKER}", "id": 9999000002},
+    {"nombre": "Seed Reporter2", "correo": f"reporter2{_SEED_MARKER}", "id": 9999000003},
+    {"nombre": "Seed Votante1",  "correo": f"votante1{_SEED_MARKER}",  "id": 9999000004},
+    {"nombre": "Seed Votante2",  "correo": f"votante2{_SEED_MARKER}",  "id": 9999000005},
 ]
 
 
@@ -39,9 +39,9 @@ def seed_moderation(db: Session = Depends(get_db), _=Depends(_check_secret)):
     # Insertar usuarios (ignorar si ya existen)
     for u in SEED_USERS:
         db.execute(text("""
-            INSERT IGNORE INTO usuarios (nombre, correo, password, boleta, status, strikes_count)
-            VALUES (:nombre, :correo, :pw, :boleta, 'NORMAL', 0)
-        """), {"nombre": u["nombre"], "correo": u["correo"], "pw": _HASH, "boleta": u["boleta"]})
+            INSERT IGNORE INTO usuarios (id, nombre, correo, password, status, strikes_count)
+            VALUES (:id, :nombre, :correo, :pw, 'NORMAL', 0)
+        """), {"id": u["id"], "nombre": u["nombre"], "correo": u["correo"], "pw": _HASH})
 
     db.commit()
 
