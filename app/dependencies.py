@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 
 from app.db.database import get_db
 from app.auth.auth import verifySession
@@ -20,6 +20,13 @@ async def verifyActiveSession(
     db: Session = Depends(get_db),
     id_user: str = Depends(verifySession),
 ) -> str:
-    """verifySession + auto-recupera suspensiones vencidas."""
+    """verifySession + auto-recupera suspensiones vencidas + bloquea suspendidos/baneados."""
     recover_suspension(db, id_user)
+    row = db.execute(
+        text("SELECT status FROM usuarios WHERE id=:id"), {"id": id_user}
+    ).fetchone()
+    if row and row.status == 'SUSPENDIDO':
+        raise HTTPException(status_code=403, detail="Tu cuenta está suspendida temporalmente.")
+    if row and row.status == 'BANEADO':
+        raise HTTPException(status_code=403, detail="Tu cuenta ha sido baneada permanentemente.")
     return id_user
