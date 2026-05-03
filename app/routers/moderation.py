@@ -46,7 +46,6 @@ class PublicationVoteBody(BaseModel):
 class CommentReportBody(BaseModel):
     comment_cid: str
     publication_cid: str
-    motivo: Literal['spam', 'acoso', 'inapropiado', 'informacionFalsa']
 
 class CommentVoteBody(BaseModel):
     case_id: int
@@ -648,9 +647,9 @@ async def report_comment(
         raise HTTPException(status_code=409, detail="Ya reportaste este comentario")
 
     db.execute(text("""
-        INSERT INTO comment_reports (comment_cid, reporter_id, publication_cid, motivo, created_at)
-        VALUES (:c, :r, :pub, :m, NOW())
-    """), {"c": body.comment_cid, "r": id_reporter, "pub": body.publication_cid, "m": body.motivo})
+        INSERT INTO comment_reports (comment_cid, reporter_id, publication_cid, created_at)
+        VALUES (:c, :r, :pub, NOW())
+    """), {"c": body.comment_cid, "r": id_reporter, "pub": body.publication_cid})
 
     # Increment report_count if comment is registered in DB
     db.execute(text("""

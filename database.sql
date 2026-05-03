@@ -178,7 +178,6 @@ CREATE TABLE IF NOT EXISTS comment_reports (
     comment_cid     VARCHAR(255) NOT NULL,
     reporter_id     INT NOT NULL,
     publication_cid VARCHAR(255) NOT NULL,
-    motivo          ENUM('spam','acoso','inapropiado','informacionFalsa') NOT NULL,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_comment_report (comment_cid, reporter_id),
     INDEX idx_comment (comment_cid),
