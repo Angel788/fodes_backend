@@ -491,7 +491,9 @@ async def get_moderation_publications(
             pmc.keep_count,
             pmc.remove_count,
             (SELECT voto FROM publication_moderation_votes
-             WHERE case_id=pmc.id AND voter_id=:uid LIMIT 1) AS mi_voto
+             WHERE case_id=pmc.id AND voter_id=:uid LIMIT 1) AS mi_voto,
+            (SELECT GROUP_CONCAT(nombre_tag ORDER BY nombre_tag SEPARATOR ',')
+             FROM publicacion_tags WHERE id_publicacion=p.cid_content) AS tags
         FROM publications p
         JOIN publication_moderation_cases pmc
             ON pmc.publication_cid=p.cid_content AND pmc.status='OPEN'
@@ -515,6 +517,7 @@ async def get_moderation_publications(
             "keep_count":      r.keep_count,
             "remove_count":    r.remove_count,
             "mi_voto":         r.mi_voto,
+            "tags":            r.tags.split(',') if r.tags else [],
         } for r in rows]
     }
 
