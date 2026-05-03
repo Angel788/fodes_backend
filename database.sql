@@ -1,38 +1,41 @@
 -- FODES Database Schema
--- Reflects the actual MariaDB schema on GCP
+-- Reflects the actual MariaDB schema on GCP (synced 2026-05-03)
 
 CREATE DATABASE IF NOT EXISTS FODES2;
 USE FODES2;
 
--- Table for user management
+-- ── Core tables ──────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS usuarios (
-    id       INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    nombre   VARCHAR(255) NOT NULL,
-    correo   VARCHAR(255) NOT NULL,
-    password VARCHAR(255) NOT NULL,
+    id            INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    nombre        VARCHAR(255) NOT NULL,
+    correo        VARCHAR(255) NOT NULL,
+    password      VARCHAR(255) NOT NULL,
+    status        ENUM('NORMAL','EN_REVISION','SUSPENDIDO','BANEADO') NOT NULL DEFAULT 'NORMAL',
+    strikes_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    ban_until     DATETIME NULL DEFAULT NULL,
     UNIQUE KEY correo (correo)
 );
 
--- Table for publication categories
 CREATE TABLE IF NOT EXISTS categories (
     id   INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE
 );
 
--- Table for publications metadata (CIDs are the links to P2P content)
 CREATE TABLE IF NOT EXISTS publications (
     cid_content  VARCHAR(255) PRIMARY KEY,
     id_autor     INT NOT NULL,
     id_categoria INT NOT NULL,
     titulo       VARCHAR(255) NOT NULL,
     fecha        DATETIME NOT NULL,
+    status       ENUM('NORMAL','EN_REVISION','ELIMINADA') NOT NULL DEFAULT 'NORMAL',
+    report_count INT NOT NULL DEFAULT 0,
     INDEX (id_autor),
     INDEX (id_categoria),
     FOREIGN KEY (id_autor)     REFERENCES usuarios(id)   ON DELETE CASCADE,
     FOREIGN KEY (id_categoria) REFERENCES categories(id) ON DELETE CASCADE
 );
 
--- Table for publication tags
 CREATE TABLE IF NOT EXISTS publicacion_tags (
     id_publicacion VARCHAR(255) NOT NULL,
     nombre_tag     VARCHAR(255) NOT NULL,
@@ -40,20 +43,22 @@ CREATE TABLE IF NOT EXISTS publicacion_tags (
     FOREIGN KEY (id_publicacion) REFERENCES publications(cid_content) ON DELETE CASCADE
 );
 
--- Table for comments metadata
 CREATE TABLE IF NOT EXISTS comments (
-    cid_content        VARCHAR(255) PRIMARY KEY,
-    publication_cid    VARCHAR(255) NOT NULL,
-    id_autor           INT NOT NULL,
-    titulo             VARCHAR(255) NOT NULL,
-    created_timestamp  DATETIME NOT NULL,
+    cid_content       VARCHAR(255) PRIMARY KEY,
+    publication_cid   VARCHAR(255) NOT NULL,
+    id_autor          INT NOT NULL,
+    titulo            VARCHAR(255) NOT NULL,
+    created_timestamp DATETIME NOT NULL,
+    parent_cid        VARCHAR(255) NULL DEFAULT NULL,
+    status            ENUM('NORMAL','EN_REVISION','ELIMINADO') NOT NULL DEFAULT 'NORMAL',
+    report_count      INT UNSIGNED NOT NULL DEFAULT 0,
     INDEX (publication_cid),
     INDEX (id_autor),
+    INDEX idx_comments_parent (parent_cid),
     FOREIGN KEY (publication_cid) REFERENCES publications(cid_content) ON DELETE CASCADE,
     FOREIGN KEY (id_autor)        REFERENCES usuarios(id) ON DELETE CASCADE
 );
 
--- Table for comment tags
 CREATE TABLE IF NOT EXISTS comentario_tags (
     id_comentario VARCHAR(255) NOT NULL,
     id_tag        INT NOT NULL,
@@ -61,7 +66,6 @@ CREATE TABLE IF NOT EXISTS comentario_tags (
     FOREIGN KEY (id_comentario) REFERENCES comments(cid_content) ON DELETE CASCADE
 );
 
--- Table for publication votes (0-5 range)
 CREATE TABLE IF NOT EXISTS publication_votes (
     cid_content VARCHAR(255) NOT NULL,
     id_usuario  INT NOT NULL,
@@ -71,7 +75,6 @@ CREATE TABLE IF NOT EXISTS publication_votes (
     FOREIGN KEY (id_usuario)  REFERENCES usuarios(id) ON DELETE CASCADE
 );
 
--- Table for comment votes (0-5 range)
 CREATE TABLE IF NOT EXISTS comment_votes (
     cid_content VARCHAR(255) NOT NULL,
     id_usuario  INT NOT NULL,
@@ -88,13 +91,8 @@ INSERT IGNORE INTO categories (name) VALUES
   ('Tecnología'),
   ('Ayuda');
 
--- ── Moderation fields on usuarios ───────────────────────────
-ALTER TABLE usuarios
-  ADD COLUMN IF NOT EXISTS status       ENUM('NORMAL','EN_REVISION','SUSPENDIDO','BANEADO') NOT NULL DEFAULT 'NORMAL',
-  ADD COLUMN IF NOT EXISTS strikes_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS ban_until    DATETIME NULL DEFAULT NULL;
+-- ── User moderation ──────────────────────────────────────────
 
--- Reports of one user by another (max once per pair)
 CREATE TABLE IF NOT EXISTS user_reports (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     reporter_id INT NOT NULL,
@@ -107,7 +105,6 @@ CREATE TABLE IF NOT EXISTS user_reports (
     FOREIGN KEY (reported_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
 
--- Active moderation case per user (at most one OPEN at a time)
 CREATE TABLE IF NOT EXISTS user_moderation_cases (
     id              INT AUTO_INCREMENT PRIMARY KEY,
     target_id       INT NOT NULL,
@@ -122,7 +119,6 @@ CREATE TABLE IF NOT EXISTS user_moderation_cases (
     FOREIGN KEY (target_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
 
--- One vote per user per moderation case
 CREATE TABLE IF NOT EXISTS user_moderation_votes (
     id         INT AUTO_INCREMENT PRIMARY KEY,
     case_id    INT NOT NULL,
@@ -134,30 +130,49 @@ CREATE TABLE IF NOT EXISTS user_moderation_votes (
     FOREIGN KEY (voter_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
 
--- Tracks eliminated P2P content (CIDs) so the feed can filter them
+-- ── Publication moderation ───────────────────────────────────
+
+-- Note: reporter_id and voter_id are varchar(20) matching the legacy token payload
+CREATE TABLE IF NOT EXISTS publication_reports (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    reporter_id     VARCHAR(20) NOT NULL,
+    publication_cid VARCHAR(100) NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_reporter_pub (reporter_id, publication_cid)
+);
+
+CREATE TABLE IF NOT EXISTS publication_moderation_cases (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    publication_cid VARCHAR(100) NOT NULL,
+    status          ENUM('OPEN','RESOLVED_KEEP','RESOLVED_REMOVE') NOT NULL DEFAULT 'OPEN',
+    keep_count      INT NOT NULL DEFAULT 0,
+    remove_count    INT NOT NULL DEFAULT 0,
+    voting_deadline DATETIME NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at     DATETIME NULL DEFAULT NULL
+);
+
+CREATE TABLE IF NOT EXISTS publication_moderation_votes (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    case_id    INT NOT NULL,
+    voter_id   VARCHAR(20) NOT NULL,
+    voto       ENUM('mantener','eliminar') NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_case_voter (case_id, voter_id)
+);
+
+-- ── Content elimination tracking ─────────────────────────────
+
 CREATE TABLE IF NOT EXISTS content_status (
     cid            VARCHAR(255) PRIMARY KEY,
     tipo           ENUM('publicacion','comentario') NOT NULL,
     status         ENUM('ELIMINADA','ELIMINADO') NOT NULL,
-    deleted_reason ENUM('AUTOR_BANEADO','PUBLICACION_PADRE_ELIMINADA','MODERACION_COMUNITARIA') NOT NULL,
+    deleted_reason ENUM('AUTOR_BANEADO','PUBLICACION_PADRE_ELIMINADA','MODERACION_COMUNITARIA','COMENTARIO_PADRE_ELIMINADO') NOT NULL,
     deleted_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ── Comment moderation ───────────────────────────────────────
 
--- Add COMENTARIO_PADRE_ELIMINADO reason to content_status
-ALTER TABLE content_status
-  MODIFY COLUMN deleted_reason
-    ENUM('AUTOR_BANEADO','PUBLICACION_PADRE_ELIMINADA','MODERACION_COMUNITARIA','COMENTARIO_PADRE_ELIMINADO') NOT NULL;
-
--- Add moderation columns and parent_cid to comments
-ALTER TABLE comments
-  ADD COLUMN IF NOT EXISTS parent_cid   VARCHAR(255) NULL DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS status       ENUM('NORMAL','EN_REVISION','ELIMINADO') NOT NULL DEFAULT 'NORMAL',
-  ADD COLUMN IF NOT EXISTS report_count INT UNSIGNED NOT NULL DEFAULT 0,
-  ADD INDEX  IF NOT EXISTS idx_comments_parent (parent_cid);
-
--- One report per (comment, reporter) pair
 CREATE TABLE IF NOT EXISTS comment_reports (
     id              INT AUTO_INCREMENT PRIMARY KEY,
     comment_cid     VARCHAR(255) NOT NULL,
@@ -166,12 +181,11 @@ CREATE TABLE IF NOT EXISTS comment_reports (
     motivo          ENUM('spam','acoso','inapropiado','informacionFalsa') NOT NULL,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_comment_report (comment_cid, reporter_id),
-    INDEX idx_comment  (comment_cid),
+    INDEX idx_comment (comment_cid),
     FOREIGN KEY (reporter_id)     REFERENCES usuarios(id)              ON DELETE CASCADE,
     FOREIGN KEY (publication_cid) REFERENCES publications(cid_content) ON DELETE CASCADE
 );
 
--- Active moderation case per comment (at most one OPEN at a time)
 CREATE TABLE IF NOT EXISTS comment_moderation_cases (
     id              INT AUTO_INCREMENT PRIMARY KEY,
     comment_cid     VARCHAR(255) NOT NULL,
@@ -187,7 +201,6 @@ CREATE TABLE IF NOT EXISTS comment_moderation_cases (
     FOREIGN KEY (publication_cid) REFERENCES publications(cid_content) ON DELETE CASCADE
 );
 
--- One vote per moderator per comment case
 CREATE TABLE IF NOT EXISTS comment_moderation_votes (
     id         INT AUTO_INCREMENT PRIMARY KEY,
     case_id    INT NOT NULL,
