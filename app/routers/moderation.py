@@ -19,6 +19,8 @@ REPORT_THRESHOLD = 15
 VOTE_HOURS = 24
 SUSPENSION_DAYS = {1: 30, 2: 60}  # strike → días de suspensión
 
+PUB_REPORT_THRESHOLD = 10
+
 
 # ── Modelos ──────────────────────────────────────────────────
 
@@ -32,6 +34,13 @@ class ModerationVoteBody(BaseModel):
 
 class ContentStatusBody(BaseModel):
     cids: list[str]
+
+class PublicationReportBody(BaseModel):
+    publication_cid: str
+
+class PublicationVoteBody(BaseModel):
+    case_id: int
+    voto: Literal['mantener', 'eliminar']
 
 
 # ── Helpers internos ─────────────────────────────────────────
@@ -80,6 +89,56 @@ def _resolve_expired(db: Session) -> None:
         # Limpiar reportes para evitar que el mismo grupo vuelva a entrar de inmediato
         db.execute(text("DELETE FROM user_reports WHERE reported_id=:id"),
                    {"id": case.target_id})
+
+    if expired:
+        db.commit()
+
+
+def _resolve_expired_publications(db: Session) -> None:
+    """Resuelve casos de publicaciones cuyo periodo de 24 h ya venció."""
+    expired = db.execute(text("""
+        SELECT pmc.id, pmc.publication_cid, pmc.keep_count, pmc.remove_count
+        FROM publication_moderation_cases pmc
+        WHERE pmc.status = 'OPEN' AND pmc.voting_deadline <= NOW()
+    """)).fetchall()
+
+    for case in expired:
+        if case.remove_count > case.keep_count:
+            db.execute(text("""
+                UPDATE publications SET status='ELIMINADA' WHERE cid_content=:cid
+            """), {"cid": case.publication_cid})
+            db.execute(text("""
+                INSERT INTO content_status (cid, tipo, status, deleted_reason, deleted_at)
+                VALUES (:cid, 'publicacion', 'ELIMINADA', 'MODERACION_COMUNITARIA', NOW())
+                ON DUPLICATE KEY UPDATE
+                    status='ELIMINADA', deleted_reason='MODERACION_COMUNITARIA', deleted_at=NOW()
+            """), {"cid": case.publication_cid})
+            db.execute(text("""
+                INSERT INTO content_status (cid, tipo, status, deleted_reason, deleted_at)
+                SELECT cid_content, 'comentario', 'ELIMINADO', 'PUBLICACION_PADRE_ELIMINADA', NOW()
+                FROM comments WHERE publication_cid=:cid
+                ON DUPLICATE KEY UPDATE
+                    status='ELIMINADO', deleted_reason='PUBLICACION_PADRE_ELIMINADA', deleted_at=NOW()
+            """), {"cid": case.publication_cid})
+            db.execute(text("""
+                UPDATE publication_moderation_cases
+                SET status='RESOLVED_REMOVE', resolved_at=NOW()
+                WHERE id=:id
+            """), {"id": case.id})
+        else:
+            db.execute(text("""
+                UPDATE publications SET status='NORMAL' WHERE cid_content=:cid
+            """), {"cid": case.publication_cid})
+            db.execute(text("""
+                UPDATE publication_moderation_cases
+                SET status='RESOLVED_KEEP', resolved_at=NOW()
+                WHERE id=:id
+            """), {"id": case.id})
+
+        db.execute(text("DELETE FROM publication_reports WHERE publication_cid=:cid"),
+                   {"cid": case.publication_cid})
+        db.execute(text("UPDATE publications SET report_count=0 WHERE cid_content=:cid"),
+                   {"cid": case.publication_cid})
 
     if expired:
         db.commit()
@@ -347,4 +406,160 @@ async def check_content_status(
     return {
         "status":     "success",
         "eliminated": list(eliminated),
+    }
+
+
+# ── Moderación de publicaciones ───────────────────────────────
+
+@router.post("/publications/report")
+@limiter.limit("20/minute")
+async def report_publication(
+    request: Request,
+    body: PublicationReportBody,
+    db: Session = Depends(get_db),
+    id_reporter: str = Depends(verifyActiveSession)
+):
+    """Reporta una publicación. Máximo un reporte por alumno por publicación."""
+    pub = db.execute(text("""
+        SELECT cid_content, status FROM publications WHERE cid_content=:cid
+    """), {"cid": body.publication_cid}).fetchone()
+    if not pub:
+        raise HTTPException(status_code=404, detail="Publicación no encontrada")
+    if pub.status == 'ELIMINADA':
+        raise HTTPException(status_code=400, detail="No puedes reportar una publicación eliminada")
+
+    dup = db.execute(text("""
+        SELECT id FROM publication_reports
+        WHERE reporter_id=:r AND publication_cid=:cid
+    """), {"r": id_reporter, "cid": body.publication_cid}).fetchone()
+    if dup:
+        raise HTTPException(status_code=409, detail="Ya reportaste esta publicación anteriormente")
+
+    db.execute(text("""
+        INSERT INTO publication_reports (reporter_id, publication_cid, created_at)
+        VALUES (:r, :cid, NOW())
+    """), {"r": id_reporter, "cid": body.publication_cid})
+    db.execute(text("""
+        UPDATE publications SET report_count = report_count + 1 WHERE cid_content=:cid
+    """), {"cid": body.publication_cid})
+    db.commit()
+
+    total = db.execute(text("""
+        SELECT report_count FROM publications WHERE cid_content=:cid
+    """), {"cid": body.publication_cid}).fetchone().report_count
+
+    en_revision = False
+    if total >= PUB_REPORT_THRESHOLD and pub.status == 'NORMAL':
+        open_case = db.execute(text("""
+            SELECT id FROM publication_moderation_cases
+            WHERE publication_cid=:cid AND status='OPEN'
+        """), {"cid": body.publication_cid}).fetchone()
+        if not open_case:
+            deadline = datetime.now() + timedelta(hours=VOTE_HOURS)
+            db.execute(text("""
+                INSERT INTO publication_moderation_cases (publication_cid, status, voting_deadline)
+                VALUES (:cid, 'OPEN', :dl)
+            """), {"cid": body.publication_cid, "dl": deadline})
+            db.execute(text("""
+                UPDATE publications SET status='EN_REVISION' WHERE cid_content=:cid
+            """), {"cid": body.publication_cid})
+            db.commit()
+            en_revision = True
+
+    return {
+        "status":        "success",
+        "total_reports": total,
+        "en_revision":   en_revision or pub.status == 'EN_REVISION',
+    }
+
+
+@router.get("/publications")
+async def get_moderation_publications(
+    db: Session = Depends(get_db),
+    id_user: str = Depends(verifySession)
+):
+    """Lista las publicaciones actualmente en revisión (casos OPEN)."""
+    _resolve_expired_publications(db)
+
+    rows = db.execute(text("""
+        SELECT
+            p.cid_content, p.titulo, p.report_count, p.status,
+            u.nombre AS autor_nombre, u.correo AS autor_correo,
+            c.name  AS categoria,
+            pmc.id              AS case_id,
+            pmc.voting_deadline,
+            pmc.keep_count,
+            pmc.remove_count,
+            (SELECT voto FROM publication_moderation_votes
+             WHERE case_id=pmc.id AND voter_id=:uid LIMIT 1) AS mi_voto
+        FROM publications p
+        JOIN publication_moderation_cases pmc
+            ON pmc.publication_cid=p.cid_content AND pmc.status='OPEN'
+        JOIN usuarios u ON u.id=p.id_autor
+        LEFT JOIN categories c ON c.id=p.id_categoria
+        ORDER BY pmc.created_at DESC
+    """), {"uid": id_user}).fetchall()
+
+    return {
+        "status": "success",
+        "publications": [{
+            "cid":             r.cid_content,
+            "titulo":          r.titulo,
+            "autor":           r.autor_nombre,
+            "autor_correo":    r.autor_correo,
+            "categoria":       r.categoria or "General",
+            "report_count":    r.report_count,
+            "status":          r.status,
+            "case_id":         r.case_id,
+            "voting_deadline": r.voting_deadline.isoformat(),
+            "keep_count":      r.keep_count,
+            "remove_count":    r.remove_count,
+            "mi_voto":         r.mi_voto,
+        } for r in rows]
+    }
+
+
+@router.post("/publications/vote")
+@limiter.limit("20/minute")
+async def vote_publication_moderation(
+    request: Request,
+    body: PublicationVoteBody,
+    db: Session = Depends(get_db),
+    id_voter: str = Depends(verifyActiveSession)
+):
+    """Vota en un caso de moderación de publicación."""
+    case = db.execute(text("""
+        SELECT id, status, voting_deadline FROM publication_moderation_cases WHERE id=:id
+    """), {"id": body.case_id}).fetchone()
+    if not case:
+        raise HTTPException(status_code=404, detail="Caso de moderación no encontrado")
+    if case.status != 'OPEN':
+        raise HTTPException(status_code=400, detail="Este caso ya fue resuelto")
+    if datetime.now() > case.voting_deadline:
+        raise HTTPException(status_code=400, detail="El periodo de votación ha terminado")
+
+    dup = db.execute(text("""
+        SELECT id FROM publication_moderation_votes WHERE case_id=:c AND voter_id=:v
+    """), {"c": body.case_id, "v": id_voter}).fetchone()
+    if dup:
+        raise HTTPException(status_code=409, detail="Ya votaste en este caso")
+
+    db.execute(text("""
+        INSERT INTO publication_moderation_votes (case_id, voter_id, voto, created_at)
+        VALUES (:c, :v, :voto, NOW())
+    """), {"c": body.case_id, "v": id_voter, "voto": body.voto})
+
+    col = "keep_count" if body.voto == "mantener" else "remove_count"
+    db.execute(text(f"UPDATE publication_moderation_cases SET {col}={col}+1 WHERE id=:id"),
+               {"id": body.case_id})
+    db.commit()
+
+    updated = db.execute(text("""
+        SELECT keep_count, remove_count FROM publication_moderation_cases WHERE id=:id
+    """), {"id": body.case_id}).fetchone()
+
+    return {
+        "status":       "success",
+        "keep_count":   updated.keep_count,
+        "remove_count": updated.remove_count,
     }

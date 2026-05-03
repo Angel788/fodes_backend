@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -12,6 +12,9 @@ from app.dependencies import verifyActiveSession
 from app.interfaces.PublicationsCreate import PublicationCreate
 from app.interfaces.PublicationsVote import PublicationVote
 from app.interfaces.RatingBatchConsult import RatingBatchConsult
+
+class PublicationStatusBatch(BaseModel):
+    cids: list[str]
 
 router = APIRouter(prefix="/publications", tags=["Publications"])
 limiter = Limiter(key_func=get_remote_address)
@@ -243,3 +246,26 @@ async def get_publications_rating(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/moderation-status")
+async def get_publications_moderation_status(
+    batch: PublicationStatusBatch,
+    db: Session = Depends(get_db),
+    id_user: str = Depends(verifySession)
+):
+    """Retorna el status de moderación para un lote de CIDs."""
+    if not batch.cids:
+        return {"status": "success", "statuses": {}}
+
+    cids_tuple = tuple(batch.cids) if len(batch.cids) > 1 else (batch.cids[0],)
+    rows = db.execute(text("""
+        SELECT cid_content, status FROM publications WHERE cid_content IN :cids
+    """), {"cids": cids_tuple}).fetchall()
+
+    statuses = {r.cid_content: r.status for r in rows}
+    for cid in batch.cids:
+        if cid not in statuses:
+            statuses[cid] = 'NORMAL'
+
+    return {"status": "success", "statuses": statuses}
