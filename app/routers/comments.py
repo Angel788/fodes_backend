@@ -57,15 +57,17 @@ async def set_comment(
 
         # Index comment metadata
         query_comment = text("""
-            INSERT IGNORE INTO comments (cid_content, publication_cid, id_autor, titulo, created_timestamp)
-            VALUES (:cid, :pub_cid, :autor, :titulo, :fecha)
+            INSERT IGNORE INTO comments
+                (cid_content, publication_cid, id_autor, titulo, created_timestamp, parent_cid)
+            VALUES (:cid, :pub_cid, :autor, :titulo, :fecha, :parent_cid)
         """)
         db.execute(query_comment, {
             "cid": cid_generated,
             "pub_cid": comment.publication_cid,
             "autor": id_autor,
             "titulo": comment.titulo,
-            "fecha": fecha_actual
+            "fecha": fecha_actual,
+            "parent_cid": comment.parent_cid,
         })
 
         # Link tags to comment
@@ -161,6 +163,48 @@ async def vote_comment(
         db.rollback()
         raise HTTPException(
             status_code=500, detail=f"Error al registrar el voto: {str(e)}")
+
+
+@router.post("/moderation-status")
+@limiter.limit("20/minute")
+async def get_comments_moderation_status(
+    request: Request,
+    batch: RatingBatchConsult,
+    db: Session = Depends(get_db),
+    id_user: str = Depends(verifySession)
+):
+    """
+    Batch retrieve moderation status for a list of comment CIDs.
+    Returns statuses: NORMAL | EN_REVISION | ELIMINADO
+    """
+    if not batch.cids:
+        return {"status": "success", "statuses": {}}
+
+    cids_tuple = tuple(batch.cids) if len(batch.cids) > 1 else (batch.cids[0],)
+
+    # Eliminated CIDs from content_status
+    elim_rows = db.execute(text("""
+        SELECT cid FROM content_status WHERE cid IN :cids AND tipo='comentario'
+    """), {"cids": cids_tuple}).fetchall()
+    eliminated = {r.cid for r in elim_rows}
+
+    # EN_REVISION CIDs from comment_moderation_cases
+    revision_rows = db.execute(text("""
+        SELECT comment_cid FROM comment_moderation_cases
+        WHERE comment_cid IN :cids AND status='OPEN'
+    """), {"cids": cids_tuple}).fetchall()
+    en_revision = {r.comment_cid for r in revision_rows}
+
+    statuses = {}
+    for cid in batch.cids:
+        if cid in eliminated:
+            statuses[cid] = 'ELIMINADO'
+        elif cid in en_revision:
+            statuses[cid] = 'EN_REVISION'
+        else:
+            statuses[cid] = 'NORMAL'
+
+    return {"status": "success", "statuses": statuses}
 
 
 @router.post("/rating")

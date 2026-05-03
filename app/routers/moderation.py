@@ -20,6 +20,7 @@ VOTE_HOURS = 24
 SUSPENSION_DAYS = {1: 30, 2: 60}  # strike → días de suspensión
 
 PUB_REPORT_THRESHOLD = 10
+COMMENT_REPORT_THRESHOLD = 10
 
 
 # ── Modelos ──────────────────────────────────────────────────
@@ -39,6 +40,15 @@ class PublicationReportBody(BaseModel):
     publication_cid: str
 
 class PublicationVoteBody(BaseModel):
+    case_id: int
+    voto: Literal['mantener', 'eliminar']
+
+class CommentReportBody(BaseModel):
+    comment_cid: str
+    publication_cid: str
+    motivo: Literal['spam', 'acoso', 'inapropiado', 'informacionFalsa']
+
+class CommentVoteBody(BaseModel):
     case_id: int
     voto: Literal['mantener', 'eliminar']
 
@@ -559,6 +569,213 @@ async def vote_publication_moderation(
 
     updated = db.execute(text("""
         SELECT keep_count, remove_count FROM publication_moderation_cases WHERE id=:id
+    """), {"id": body.case_id}).fetchone()
+
+    return {
+        "status":       "success",
+        "keep_count":   updated.keep_count,
+        "remove_count": updated.remove_count,
+    }
+
+
+# ── Moderación de comentarios ─────────────────────────────────
+
+def _resolve_expired_comments(db: Session) -> None:
+    """Resuelve casos de comentarios cuyo periodo ya venció."""
+    expired = db.execute(text("""
+        SELECT cmc.id, cmc.comment_cid, cmc.keep_count, cmc.remove_count
+        FROM comment_moderation_cases cmc
+        WHERE cmc.status = 'OPEN' AND cmc.voting_deadline <= NOW()
+    """)).fetchall()
+
+    for case in expired:
+        if case.remove_count > case.keep_count:
+            db.execute(text("""
+                INSERT INTO content_status (cid, tipo, status, deleted_reason, deleted_at)
+                VALUES (:cid, 'comentario', 'ELIMINADO', 'MODERACION_COMUNITARIA', NOW())
+                ON DUPLICATE KEY UPDATE
+                    status='ELIMINADO', deleted_reason='MODERACION_COMUNITARIA', deleted_at=NOW()
+            """), {"cid": case.comment_cid})
+            db.execute(text("""
+                UPDATE comments SET status='ELIMINADO' WHERE cid_content=:cid
+            """), {"cid": case.comment_cid})
+            db.execute(text("""
+                UPDATE comment_moderation_cases
+                SET status='RESOLVED_REMOVE', resolved_at=NOW()
+                WHERE id=:id
+            """), {"id": case.id})
+        else:
+            db.execute(text("""
+                UPDATE comments SET status='NORMAL' WHERE cid_content=:cid
+            """), {"cid": case.comment_cid})
+            db.execute(text("""
+                UPDATE comment_moderation_cases
+                SET status='RESOLVED_KEEP', resolved_at=NOW()
+                WHERE id=:id
+            """), {"id": case.id})
+
+        db.execute(text("DELETE FROM comment_reports WHERE comment_cid=:cid"),
+                   {"cid": case.comment_cid})
+        db.execute(text("UPDATE comments SET report_count=0 WHERE cid_content=:cid"),
+                   {"cid": case.comment_cid})
+
+    if expired:
+        db.commit()
+
+
+@router.post("/comments/report")
+@limiter.limit("20/minute")
+async def report_comment(
+    request: Request,
+    body: CommentReportBody,
+    db: Session = Depends(get_db),
+    id_reporter: str = Depends(verifyActiveSession)
+):
+    """Reporta un comentario. Máximo un reporte por alumno por comentario."""
+    # Verify publication exists
+    pub = db.execute(text("""
+        SELECT cid_content FROM publications WHERE cid_content=:cid
+    """), {"cid": body.publication_cid}).fetchone()
+    if not pub:
+        raise HTTPException(status_code=404, detail="Publicación no encontrada")
+
+    # Block duplicate report
+    dup = db.execute(text("""
+        SELECT id FROM comment_reports
+        WHERE comment_cid=:c AND reporter_id=:r
+    """), {"c": body.comment_cid, "r": id_reporter}).fetchone()
+    if dup:
+        raise HTTPException(status_code=409, detail="Ya reportaste este comentario")
+
+    db.execute(text("""
+        INSERT INTO comment_reports (comment_cid, reporter_id, publication_cid, motivo, created_at)
+        VALUES (:c, :r, :pub, :m, NOW())
+    """), {"c": body.comment_cid, "r": id_reporter, "pub": body.publication_cid, "m": body.motivo})
+
+    # Increment report_count if comment is registered in DB
+    db.execute(text("""
+        UPDATE comments SET report_count = report_count + 1 WHERE cid_content=:c
+    """), {"c": body.comment_cid})
+
+    db.commit()
+
+    total = db.execute(text("""
+        SELECT COUNT(*) AS c FROM comment_reports WHERE comment_cid=:c
+    """), {"c": body.comment_cid}).fetchone().c
+
+    en_revision = False
+    # Check current status via comment_moderation_cases
+    existing_status = db.execute(text("""
+        SELECT status FROM comment_moderation_cases
+        WHERE comment_cid=:c AND status='OPEN'
+    """), {"c": body.comment_cid}).fetchone()
+
+    if total >= COMMENT_REPORT_THRESHOLD and not existing_status:
+        deadline = datetime.now() + timedelta(hours=VOTE_HOURS)
+        db.execute(text("""
+            INSERT INTO comment_moderation_cases
+                (comment_cid, publication_cid, status, voting_deadline)
+            VALUES (:c, :pub, 'OPEN', :dl)
+        """), {"c": body.comment_cid, "pub": body.publication_cid, "dl": deadline})
+        db.execute(text("""
+            UPDATE comments SET status='EN_REVISION' WHERE cid_content=:c
+        """), {"c": body.comment_cid})
+        db.commit()
+        en_revision = True
+
+    return {
+        "status":        "success",
+        "total_reports": total,
+        "en_revision":   en_revision or bool(existing_status),
+    }
+
+
+@router.get("/comments")
+async def get_moderation_comments(
+    db: Session = Depends(get_db),
+    id_user: str = Depends(verifySession)
+):
+    """Lista los comentarios actualmente en revisión (casos OPEN)."""
+    _resolve_expired_comments(db)
+
+    rows = db.execute(text("""
+        SELECT
+            cmc.id              AS case_id,
+            cmc.comment_cid,
+            cmc.publication_cid,
+            cmc.keep_count,
+            cmc.remove_count,
+            cmc.voting_deadline,
+            COALESCE(c.titulo, '')    AS titulo,
+            COALESCE(u.nombre, '')    AS autor,
+            COALESCE(u.correo, '')    AS autor_correo,
+            (SELECT COUNT(*) FROM comment_reports
+             WHERE comment_cid=cmc.comment_cid) AS report_count,
+            (SELECT voto FROM comment_moderation_votes
+             WHERE case_id=cmc.id AND voter_id=:uid LIMIT 1) AS mi_voto
+        FROM comment_moderation_cases cmc
+        LEFT JOIN comments c ON c.cid_content = cmc.comment_cid
+        LEFT JOIN usuarios u ON u.id = c.id_autor
+        WHERE cmc.status = 'OPEN'
+        ORDER BY cmc.created_at DESC
+    """), {"uid": id_user}).fetchall()
+
+    return {
+        "status": "success",
+        "comments": [{
+            "cid":             r.comment_cid,
+            "publication_cid": r.publication_cid,
+            "titulo":          r.titulo,
+            "autor":           r.autor,
+            "autor_correo":    r.autor_correo,
+            "report_count":    r.report_count,
+            "case_id":         r.case_id,
+            "voting_deadline": r.voting_deadline.isoformat(),
+            "keep_count":      r.keep_count,
+            "remove_count":    r.remove_count,
+            "mi_voto":         r.mi_voto,
+        } for r in rows]
+    }
+
+
+@router.post("/comments/vote")
+@limiter.limit("20/minute")
+async def vote_comment_moderation(
+    request: Request,
+    body: CommentVoteBody,
+    db: Session = Depends(get_db),
+    id_voter: str = Depends(verifyActiveSession)
+):
+    """Vota en un caso de moderación de comentario."""
+    case = db.execute(text("""
+        SELECT id, status, voting_deadline
+        FROM comment_moderation_cases WHERE id=:id
+    """), {"id": body.case_id}).fetchone()
+    if not case:
+        raise HTTPException(status_code=404, detail="Caso de moderación no encontrado")
+    if case.status != 'OPEN':
+        raise HTTPException(status_code=400, detail="Este caso ya fue resuelto")
+    if datetime.now() > case.voting_deadline:
+        raise HTTPException(status_code=400, detail="El periodo de votación ha terminado")
+
+    dup = db.execute(text("""
+        SELECT id FROM comment_moderation_votes WHERE case_id=:c AND voter_id=:v
+    """), {"c": body.case_id, "v": id_voter}).fetchone()
+    if dup:
+        raise HTTPException(status_code=409, detail="Ya votaste en este caso")
+
+    db.execute(text("""
+        INSERT INTO comment_moderation_votes (case_id, voter_id, voto, created_at)
+        VALUES (:c, :v, :voto, NOW())
+    """), {"c": body.case_id, "v": id_voter, "voto": body.voto})
+
+    col = "keep_count" if body.voto == "mantener" else "remove_count"
+    db.execute(text(f"UPDATE comment_moderation_cases SET {col}={col}+1 WHERE id=:id"),
+               {"id": body.case_id})
+    db.commit()
+
+    updated = db.execute(text("""
+        SELECT keep_count, remove_count FROM comment_moderation_cases WHERE id=:id
     """), {"id": body.case_id}).fetchone()
 
     return {

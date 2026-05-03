@@ -142,3 +142,59 @@ CREATE TABLE IF NOT EXISTS content_status (
     deleted_reason ENUM('AUTOR_BANEADO','PUBLICACION_PADRE_ELIMINADA','MODERACION_COMUNITARIA') NOT NULL,
     deleted_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ── Comment moderation ───────────────────────────────────────
+
+-- Add COMENTARIO_PADRE_ELIMINADO reason to content_status
+ALTER TABLE content_status
+  MODIFY COLUMN deleted_reason
+    ENUM('AUTOR_BANEADO','PUBLICACION_PADRE_ELIMINADA','MODERACION_COMUNITARIA','COMENTARIO_PADRE_ELIMINADO') NOT NULL;
+
+-- Add moderation columns and parent_cid to comments
+ALTER TABLE comments
+  ADD COLUMN IF NOT EXISTS parent_cid   VARCHAR(255) NULL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS status       ENUM('NORMAL','EN_REVISION','ELIMINADO') NOT NULL DEFAULT 'NORMAL',
+  ADD COLUMN IF NOT EXISTS report_count INT UNSIGNED NOT NULL DEFAULT 0,
+  ADD INDEX  IF NOT EXISTS idx_comments_parent (parent_cid);
+
+-- One report per (comment, reporter) pair
+CREATE TABLE IF NOT EXISTS comment_reports (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    comment_cid     VARCHAR(255) NOT NULL,
+    reporter_id     INT NOT NULL,
+    publication_cid VARCHAR(255) NOT NULL,
+    motivo          ENUM('spam','acoso','inapropiado','informacionFalsa') NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_comment_report (comment_cid, reporter_id),
+    INDEX idx_comment  (comment_cid),
+    FOREIGN KEY (reporter_id)     REFERENCES usuarios(id)              ON DELETE CASCADE,
+    FOREIGN KEY (publication_cid) REFERENCES publications(cid_content) ON DELETE CASCADE
+);
+
+-- Active moderation case per comment (at most one OPEN at a time)
+CREATE TABLE IF NOT EXISTS comment_moderation_cases (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    comment_cid     VARCHAR(255) NOT NULL,
+    publication_cid VARCHAR(255) NOT NULL,
+    status          ENUM('OPEN','RESOLVED_KEEP','RESOLVED_REMOVE') NOT NULL DEFAULT 'OPEN',
+    keep_count      INT UNSIGNED NOT NULL DEFAULT 0,
+    remove_count    INT UNSIGNED NOT NULL DEFAULT 0,
+    voting_deadline DATETIME NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at     DATETIME NULL DEFAULT NULL,
+    INDEX idx_comment_case (comment_cid),
+    INDEX idx_case_status  (status),
+    FOREIGN KEY (publication_cid) REFERENCES publications(cid_content) ON DELETE CASCADE
+);
+
+-- One vote per moderator per comment case
+CREATE TABLE IF NOT EXISTS comment_moderation_votes (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    case_id    INT NOT NULL,
+    voter_id   INT NOT NULL,
+    voto       ENUM('mantener','eliminar') NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_comment_vote (case_id, voter_id),
+    FOREIGN KEY (case_id)  REFERENCES comment_moderation_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (voter_id) REFERENCES usuarios(id)                 ON DELETE CASCADE
+);
