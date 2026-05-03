@@ -1,4 +1,5 @@
 from typing import List, Optional, Dict
+from pydantic import BaseModel
 from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from sqlalchemy.orm import Session
