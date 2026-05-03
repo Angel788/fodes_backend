@@ -148,7 +148,7 @@ async def vote_publication(
     request: Request,
     vote_data: PublicationVote,
     db: Session = Depends(get_db),
-    id_user: str = Depends(verifySession)
+    id_user: str = Depends(verifyActiveSession)
 ):
     """
     Submit or update a 0-5 rating for a publication.

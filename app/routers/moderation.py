@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from app.auth.auth import verifySession
 from app.db.database import get_db
-from app.dependencies import recover_suspension
+from app.dependencies import recover_suspension, verifyActiveSession
 
 router = APIRouter(prefix="/moderation", tags=["Moderation"])
 limiter = Limiter(key_func=get_remote_address)
@@ -150,7 +150,7 @@ async def report_user(
     request: Request,
     body: UserReportBody,
     db: Session = Depends(get_db),
-    id_reporter: str = Depends(verifySession)
+    id_reporter: str = Depends(verifyActiveSession)
 ):
     """Reporta a otro alumno. Máximo un reporte por par de usuarios."""
     # Verificar que el reporter no esté suspendido/baneado
@@ -277,7 +277,7 @@ async def vote_user_moderation(
     request: Request,
     body: ModerationVoteBody,
     db: Session = Depends(get_db),
-    id_voter: str = Depends(verifySession)
+    id_voter: str = Depends(verifyActiveSession)
 ):
     """Vota en un caso de moderación de alumno."""
     # Verificar que el votante pueda votar
