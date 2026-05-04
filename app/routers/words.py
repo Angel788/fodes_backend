@@ -9,7 +9,7 @@ from slowapi.util import get_remote_address
 from app.db.database import get_db
 from app.dependencies import verifyActiveSession
 
-WORD_VOTE_HOURS   = 24
+WORD_VOTE_MINUTES  = 2   # TODO: cambiar a horas en producción (24h)
 DAILY_GLOBAL_LIMIT = 10
 DAILY_USER_LIMIT   = 2
 
@@ -188,7 +188,7 @@ async def propose_word(
             detail="Ya propusiste 2 palabras hoy. Intenta mañana"
         )
 
-    deadline = datetime.now() + timedelta(hours=WORD_VOTE_HOURS)
+    deadline = datetime.now() + timedelta(minutes=WORD_VOTE_MINUTES)
     db.execute(text("""
         INSERT INTO word_proposals (word, normalized_word, proposed_by, voting_deadline)
         VALUES (:word, :nw, :uid, :deadline)
