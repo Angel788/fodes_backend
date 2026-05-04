@@ -1,5 +1,5 @@
 import os
-from app.routers import auth, publications, comments, network, moderation
+from app.routers import auth, publications, comments, network, moderation, words
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -32,6 +32,7 @@ app.include_router(publications.router)
 app.include_router(comments.router)
 app.include_router(network.router)
 app.include_router(moderation.router)
+app.include_router(words.router)
 
 if os.getenv("APP_ENV") == "development":
     from app.routers import dev

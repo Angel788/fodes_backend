@@ -10,6 +10,7 @@ from app.auth.auth import verifySession
 from app.dependencies import verifyActiveSession
 from app.p2p.cid import generateCid
 from app.interfaces.CommentCreate import CommentCreate
+from app.routers.words import check_banned_words
 from app.interfaces.CommentVote import CommentVote
 from app.interfaces.RatingBatchConsult import RatingBatchConsult
 
@@ -34,6 +35,14 @@ async def set_comment(
     - **tags**: Optional list of tag IDs.
     """
     try:
+        # Check banned words across title and content
+        banned = check_banned_words([comment.titulo, comment.contenido], db)
+        if banned:
+            raise HTTPException(
+                status_code=400,
+                detail=f"PALABRA_BLOQUEADA:{banned}"
+            )
+
         # Get author name for CID generation
         query_user = text("SELECT nombre FROM usuarios WHERE id = :id")
         user_result = db.execute(query_user, {"id": id_autor}).fetchone()

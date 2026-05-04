@@ -11,6 +11,7 @@ from app.db.database import get_db
 from app.auth.auth import verifySession
 from app.dependencies import verifyActiveSession
 from app.interfaces.PublicationsCreate import PublicationCreate
+from app.routers.words import check_banned_words
 from app.interfaces.PublicationsVote import PublicationVote
 from app.interfaces.RatingBatchConsult import RatingBatchConsult
 
@@ -38,6 +39,17 @@ async def set_publication(
     - **category**: Publication category (must exist in categories table).
     """
     try:
+        # Check banned words across all text fields (title, content, tags)
+        banned = check_banned_words(
+            [pub.title, pub.content] + (pub.tags or []),
+            db
+        )
+        if banned:
+            raise HTTPException(
+                status_code=400,
+                detail=f"PALABRA_BLOQUEADA:{banned}"
+            )
+
         # Verify category exists
         query_get_cat = text("SELECT id FROM categories WHERE name = :name")
         cat_result = db.execute(
