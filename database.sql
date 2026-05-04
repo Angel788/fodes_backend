@@ -171,6 +171,38 @@ CREATE TABLE IF NOT EXISTS content_status (
     deleted_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ── Bolsa de Palabras ───────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS word_proposals (
+    id                  INT AUTO_INCREMENT PRIMARY KEY,
+    word                VARCHAR(100) NOT NULL,
+    normalized_word     VARCHAR(100) NOT NULL,
+    status              ENUM('POR_APROBAR','APROBADA','DESCARTADA') NOT NULL DEFAULT 'POR_APROBAR',
+    proposed_by         INT NOT NULL,
+    proposed_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    voting_deadline     DATETIME NOT NULL,
+    approved_at         DATETIME NULL DEFAULT NULL,
+    resolved_at         DATETIME NULL DEFAULT NULL,
+    approve_vote_count  INT UNSIGNED NOT NULL DEFAULT 0,
+    discard_vote_count  INT UNSIGNED NOT NULL DEFAULT 0,
+    INDEX idx_status      (status),
+    INDEX idx_normalized  (normalized_word),
+    INDEX idx_proposed_by (proposed_by),
+    INDEX idx_proposed_at (proposed_at),
+    FOREIGN KEY (proposed_by) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS word_votes (
+    id       INT AUTO_INCREMENT PRIMARY KEY,
+    word_id  INT NOT NULL,
+    voter_id INT NOT NULL,
+    voto     ENUM('aprobar','descartar') NOT NULL,
+    voted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_word_voter (word_id, voter_id),
+    FOREIGN KEY (word_id)  REFERENCES word_proposals(id) ON DELETE CASCADE,
+    FOREIGN KEY (voter_id) REFERENCES usuarios(id)       ON DELETE CASCADE
+);
+
 -- ── Comment moderation ───────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS comment_reports (
