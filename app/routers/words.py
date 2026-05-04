@@ -9,7 +9,7 @@ from slowapi.util import get_remote_address
 from app.db.database import get_db
 from app.dependencies import verifyActiveSession
 
-WORD_VOTE_MINUTES  = 2   # TODO: cambiar a horas en producción (24h)
+WORD_VOTE_MINUTES  = 24   # TODO: cambiar a horas en producción (24h)
 DAILY_GLOBAL_LIMIT = 10
 DAILY_USER_LIMIT   = 2
 
