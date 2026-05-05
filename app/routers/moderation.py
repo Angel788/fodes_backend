@@ -11,6 +11,7 @@ from sqlalchemy import text
 from app.auth.auth import verifySession
 from app.db.database import get_db
 from app.dependencies import recover_suspension, verifyActiveSession
+from app.routers.participation import award_points
 
 router = APIRouter(prefix="/moderation", tags=["Moderation"])
 limiter = Limiter(key_func=get_remote_address)
@@ -384,6 +385,8 @@ async def vote_user_moderation(
     db.execute(text(f"UPDATE user_moderation_cases SET {col}={col}+1 WHERE id=:id"),
                {"id": body.case_id})
     db.commit()
+    award_points(db, int(id_voter), 'MODERATION_VOTE', 'moderation_case', str(body.case_id))
+    db.commit()
 
     updated = db.execute(text("""
         SELECT keep_count, sanction_count FROM user_moderation_cases WHERE id=:id
@@ -564,6 +567,8 @@ async def vote_publication_moderation(
     col = "keep_count" if body.voto == "mantener" else "remove_count"
     db.execute(text(f"UPDATE publication_moderation_cases SET {col}={col}+1 WHERE id=:id"),
                {"id": body.case_id})
+    db.commit()
+    award_points(db, int(id_voter), 'MODERATION_VOTE', 'moderation_case', str(body.case_id))
     db.commit()
 
     updated = db.execute(text("""
@@ -771,6 +776,8 @@ async def vote_comment_moderation(
     col = "keep_count" if body.voto == "mantener" else "remove_count"
     db.execute(text(f"UPDATE comment_moderation_cases SET {col}={col}+1 WHERE id=:id"),
                {"id": body.case_id})
+    db.commit()
+    award_points(db, int(id_voter), 'MODERATION_VOTE', 'moderation_case', str(body.case_id))
     db.commit()
 
     updated = db.execute(text("""

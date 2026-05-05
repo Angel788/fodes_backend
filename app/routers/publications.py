@@ -12,6 +12,7 @@ from app.auth.auth import verifySession
 from app.dependencies import verifyActiveSession
 from app.interfaces.PublicationsCreate import PublicationCreate
 from app.routers.words import check_banned_words
+from app.routers.participation import award_points
 from app.interfaces.PublicationsVote import PublicationVote
 from app.interfaces.RatingBatchConsult import RatingBatchConsult
 
@@ -86,6 +87,9 @@ async def set_publication(
                 db.execute(
                     query_tag, {"cid": cid_content, "tag_str": tag_name})
 
+        db.commit()
+
+        award_points(db, int(id_autor), 'CREATE_POST', 'publication', cid_content)
         db.commit()
 
         return {
@@ -185,6 +189,22 @@ async def vote_publication(
             "puntos": vote_data.vote
         })
 
+        db.commit()
+
+        # Puntos al votante
+        award_points(db, int(id_user), 'REACTION', 'publication', vote_data.cid_content)
+        if vote_data.vote >= 4:
+            award_points(db, int(id_user), 'HIGH_RATING_GIVEN', 'publication', vote_data.cid_content)
+
+        # Puntos al autor de la publicación si recibe calificación alta
+        if vote_data.vote >= 4:
+            pub = db.execute(
+                text("SELECT id_autor FROM publications WHERE cid_content = :cid"),
+                {"cid": vote_data.cid_content}
+            ).fetchone()
+            if pub:
+                award_points(db, pub.id_autor, 'HIGH_RATING_RECEIVED', 'publication',
+                             f"{vote_data.cid_content}:{id_user}")
         db.commit()
 
         # Devolver el nuevo promedio para que la UI lo muestre inmediatamente

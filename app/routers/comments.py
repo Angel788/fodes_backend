@@ -12,6 +12,7 @@ from app.dependencies import verifyActiveSession
 from app.p2p.cid import generateCid
 from app.interfaces.CommentCreate import CommentCreate
 from app.routers.words import check_banned_words
+from app.routers.participation import award_points
 from app.interfaces.CommentVote import CommentVote
 from app.interfaces.RatingBatchConsult import RatingBatchConsult
 
@@ -88,6 +89,16 @@ async def set_comment(
                 db.execute(query_tag, {"cid": cid_generated, "tag_id": tag_id})
 
         db.commit()
+
+        # Puntos solo si comenta en publicación ajena
+        pub_autor = db.execute(
+            text("SELECT id_autor FROM publications WHERE cid_content = :cid"),
+            {"cid": comment.publication_cid}
+        ).fetchone()
+        if pub_autor and pub_autor.id_autor != int(id_autor):
+            action = 'CREATE_REPLY' if comment.parent_cid else 'CREATE_COMMENT'
+            award_points(db, int(id_autor), action, 'comment', cid_generated)
+            db.commit()
 
         return {
             "status": "success",
