@@ -16,13 +16,11 @@ PERIODOS = {
 
 
 def _bounds(periodo: str):
-    delta = PERIODOS[periodo]
-    now   = datetime.utcnow()
-    end   = now
-    start = now - delta
-    prev_end   = start
+    delta      = PERIODOS[periodo]
+    now        = datetime.utcnow()
+    start      = now - delta
     prev_start = start - delta
-    return start, end, prev_start, prev_end
+    return start, now, prev_start, start
 
 
 def _metrics(db: Session, start: datetime, end: datetime) -> dict:
@@ -36,11 +34,7 @@ def _metrics(db: Session, start: datetime, end: datetime) -> dict:
         WHERE created_timestamp BETWEEN :s AND :e
     """), {"s": start, "e": end}).scalar() or 0
 
-    promedio = db.execute(text("""
-        SELECT AVG(puntos) FROM publication_votes
-        WHERE voted_at BETWEEN :s AND :e
-    """), {"s": start, "e": end}).scalar()
-    promedio = round(float(promedio), 2) if promedio else None
+    promedio_resp = round(n_com / n_pub, 2) if n_pub > 0 else None
 
     tr = db.execute(text("""
         SELECT AVG(TIMESTAMPDIFF(MINUTE, p.fecha, fc.min_ts))
@@ -67,11 +61,34 @@ def _metrics(db: Session, start: datetime, end: datetime) -> dict:
     tres = round(float(tres), 1) if tres else None
 
     return {
-        "n_publicaciones":      n_pub,
-        "n_comentarios":        n_com,
-        "promedio_calificacion": promedio,
-        "tr_minutos":           tr,
-        "tres_minutos":         tres,
+        "n_publicaciones":    n_pub,
+        "n_comentarios":      n_com,
+        "promedio_respuestas": promedio_resp,
+        "tr_minutos":         tr,
+        "tres_minutos":       tres,
+    }
+
+
+def _series(db: Session, start: datetime, end: datetime) -> dict:
+    pub_rows = db.execute(text("""
+        SELECT DATE(fecha) AS dia, COUNT(*) AS cnt
+        FROM publications
+        WHERE fecha BETWEEN :s AND :e
+        GROUP BY DATE(fecha)
+        ORDER BY dia
+    """), {"s": start, "e": end}).fetchall()
+
+    com_rows = db.execute(text("""
+        SELECT DATE(created_timestamp) AS dia, COUNT(*) AS cnt
+        FROM comments
+        WHERE created_timestamp BETWEEN :s AND :e
+        GROUP BY DATE(created_timestamp)
+        ORDER BY dia
+    """), {"s": start, "e": end}).fetchall()
+
+    return {
+        "publicaciones": [{"fecha": str(r.dia), "count": r.cnt} for r in pub_rows],
+        "comentarios":   [{"fecha": str(r.dia), "count": r.cnt} for r in com_rows],
     }
 
 
@@ -88,4 +105,5 @@ async def get_activity(
         "periodo":  periodo,
         "actual":   _metrics(db, start, end),
         "anterior": _metrics(db, prev_start, prev_end),
+        "series":   _series(db, start, end),
     }
