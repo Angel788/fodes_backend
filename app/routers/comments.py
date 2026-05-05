@@ -1,4 +1,5 @@
 from datetime import datetime
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -97,6 +98,35 @@ async def set_comment(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class CommentIndex(BaseModel):
+    cid_content:     str
+    publication_cid: str
+    titulo:          str
+    parent_cid:      str | None = None
+
+
+@router.post("/index")
+async def index_comment(
+    payload: CommentIndex,
+    db: Session = Depends(get_db),
+    id_autor: str = Depends(verifyActiveSession),
+):
+    """Indexes a P2P comment into SQL after it has been stored in LevelDB."""
+    db.execute(text("""
+        INSERT IGNORE INTO comments
+            (cid_content, publication_cid, id_autor, titulo, created_timestamp, parent_cid)
+        VALUES (:cid, :pub_cid, :autor, :titulo, NOW(), :parent_cid)
+    """), {
+        "cid":        payload.cid_content,
+        "pub_cid":    payload.publication_cid,
+        "autor":      id_autor,
+        "titulo":     payload.titulo[:255],
+        "parent_cid": payload.parent_cid,
+    })
+    db.commit()
+    return {"status": "success"}
 
 
 @router.get("/publication/{publication_cid}")
