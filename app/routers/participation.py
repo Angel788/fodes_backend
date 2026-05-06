@@ -128,7 +128,7 @@ async def get_user_participation(
 
 @router.get("/batch")
 async def get_batch_participation(
-    ids: str,  # comma-separated user ids
+    ids: str,  # comma-separated numeric user ids
     db: Session = Depends(get_db),
     _: str = Depends(verifySession),
 ):
@@ -144,6 +144,29 @@ async def get_batch_participation(
     badges = {}
     for row in rows:
         pts = 0 if row.status == 'BANEADO' else row.puntos_participacion
-        badges[row.id] = get_badge(pts)
+        badges[str(row.id)] = get_badge(pts)
+
+    return {"status": "success", "badges": badges}
+
+
+@router.get("/batch-by-correo")
+async def get_batch_by_correo(
+    correos: str,  # comma-separated emails
+    db: Session = Depends(get_db),
+    _: str = Depends(verifySession),
+):
+    correo_list = [c.strip() for c in correos.split(',') if c.strip()]
+    if not correo_list:
+        return {"status": "success", "badges": {}}
+
+    rows = db.execute(text("""
+        SELECT correo, puntos_participacion, status FROM usuarios
+        WHERE correo IN :correos
+    """), {"correos": tuple(correo_list)}).fetchall()
+
+    badges = {}
+    for row in rows:
+        pts = 0 if row.status == 'BANEADO' else row.puntos_participacion
+        badges[row.correo] = get_badge(pts)
 
     return {"status": "success", "badges": badges}
