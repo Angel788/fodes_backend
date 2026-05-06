@@ -29,13 +29,13 @@ DAILY_LIMITS = {
 }
 
 POINTS = {
-    'CREATE_POST':          5,
-    'CREATE_COMMENT':       3,
-    'CREATE_REPLY':         3,
+    'CREATE_POST':          3,
+    'CREATE_COMMENT':       2,
+    'CREATE_REPLY':         2,
     'REACTION':             1,
     'MODERATION_VOTE':      1,
     'HIGH_RATING_GIVEN':    2,
-    'HIGH_RATING_RECEIVED': 5,
+    'HIGH_RATING_RECEIVED': 2,
 }
 
 
