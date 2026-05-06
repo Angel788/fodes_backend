@@ -30,7 +30,7 @@ async def login(
     try:
         # Check if user exists and verify password
         query_user = text(
-            "SELECT id, nombre, password FROM usuarios WHERE correo = :correo")
+            "SELECT id, nombre, password, created_at FROM usuarios WHERE correo = :correo")
         user = db.execute(query_user, {"correo": user_data.correo}).fetchone()
 
         if not user or not verifyPassword(user_data.password, user.password):
@@ -45,7 +45,8 @@ async def login(
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "nombre": user.nombre
+            "nombre": user.nombre,
+            "fecha_registro": user.created_at.strftime("%d/%m/%Y") if user.created_at else None,
         }
     except HTTPException:
         raise
