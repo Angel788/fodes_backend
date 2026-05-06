@@ -10,6 +10,8 @@ from app.interfaces.UserLogin import UserLogin
 from app.interfaces.UserRegister import UserRegister
 from app.auth.saes import validar_desde_url
 from app.interfaces.UserResetPassword import UserResetPassword
+from app.dependencies import verifyActiveSession
+from pydantic import BaseModel
 
 router = APIRouter(prefix="", tags=["Authentication"])
 limiter = Limiter(key_func=get_remote_address)
@@ -181,3 +183,25 @@ async def reset_password(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+
+class ChangePasswordBody(BaseModel):
+    new_password: str
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordBody,
+    db: Session = Depends(get_db),
+    id_user: str = Depends(verifyActiveSession),
+):
+    if len(body.new_password) < 16 or len(body.new_password) > 24:
+        raise HTTPException(status_code=400, detail="La key debe tener entre 16 y 24 caracteres")
+
+    hashed = genHashPassword(body.new_password)
+    db.execute(
+        text("UPDATE usuarios SET password = :pwd WHERE id = :id"),
+        {"pwd": hashed, "id": id_user}
+    )
+    db.commit()
+    return {"status": "success", "message": "Key actualizada correctamente"}
