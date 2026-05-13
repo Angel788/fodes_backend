@@ -33,13 +33,13 @@ async def login(
         from datetime import datetime
         # Check if user exists and verify password
         query_user = text(
-            "SELECT id, nombre, password, status, ban_until, created_at FROM usuarios WHERE correo = :correo")
-        user = db.execute(query_user, {"correo": user_data.correo}).fetchone()
+            "SELECT id, nombre, password, status, ban_until, created_at FROM usuarios WHERE id = :boleta")
+        user = db.execute(query_user, {"boleta": user_data.boleta}).fetchone()
 
         if not user or not verifyPassword(user_data.password, user.password):
             raise HTTPException(
                 status_code=401,
-                detail="Correo o contraseña incorrectos",
+                detail="Boleta o contraseña incorrectos",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -99,18 +99,14 @@ async def register(
     - **url_saes**: Mandatory URL from SAES QR.
     """
     try:
-        # Check if email or id (boleta) is already taken
-        query_check = text(
-            "SELECT id FROM usuarios WHERE correo = :correo OR id = :boleta")
-        existing_user = db.execute(query_check, {
-            "correo": user_data.correo,
-            "boleta": user_data.boleta
-        }).fetchone()
+        # Check if boleta is already taken
+        query_check = text("SELECT id FROM usuarios WHERE id = :boleta")
+        existing_user = db.execute(query_check, {"boleta": user_data.boleta}).fetchone()
 
         if existing_user:
             raise HTTPException(
                 status_code=400,
-                detail="El correo electrónico o la boleta ya están registrados."
+                detail="La boleta ya está registrada."
             )
 
         # Bloquear boletas con más de 10 semestres (5 años)
@@ -139,14 +135,13 @@ async def register(
         # Hash password and insert user
         hashed_password = genHashPassword(user_data.password)
         query_insert = text("""
-            INSERT INTO usuarios (id, nombre, correo, password)
-            VALUES (:boleta, :nombre, :correo, :password_hash)
+            INSERT INTO usuarios (id, nombre, password)
+            VALUES (:boleta, :nombre, :password_hash)
         """)
 
         db.execute(query_insert, {
             "boleta": user_data.boleta,
             "nombre": user_data.nombre,
-            "correo": user_data.correo,
             "password_hash": hashed_password,
         })
         db.commit()
@@ -155,7 +150,6 @@ async def register(
             "message": "Usuario registrado y verificado exitosamente",
             "data": {
                 "id_usuario": user_data.boleta,
-                "correo": user_data.correo,
             }
         }
     except HTTPException:
@@ -187,12 +181,12 @@ async def reset_password(
     - **nombre_saes**: Full name returned by SAES validation.
     """
     try:
-        query = text("SELECT id, nombre FROM usuarios WHERE correo = :correo")
-        user = db.execute(query, {"correo": data.correo}).fetchone()
+        query = text("SELECT id, nombre FROM usuarios WHERE id = :boleta")
+        user = db.execute(query, {"boleta": data.boleta}).fetchone()
 
         if not user:
             raise HTTPException(
-                status_code=404, detail="No existe una cuenta con ese correo")
+                status_code=404, detail="No existe una cuenta con esa boleta")
 
         # Verify that SAES name contains all words from the stored name
         tokens_saes = _normalizar(data.nombre_saes).split()

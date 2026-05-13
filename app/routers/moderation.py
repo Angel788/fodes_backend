@@ -27,7 +27,7 @@ COMMENT_REPORT_THRESHOLD = 10
 # ── Modelos ──────────────────────────────────────────────────
 
 class UserReportBody(BaseModel):
-    reported_correo: str
+    reported_id: int
     motivo: Literal['spam', 'acoso', 'inapropiado', 'informacionFalsa']
 
 class ModerationVoteBody(BaseModel):
@@ -229,10 +229,9 @@ async def report_user(
     if reporter_row and reporter_row.status in ('SUSPENDIDO', 'BANEADO'):
         raise HTTPException(status_code=403, detail="No puedes reportar mientras estás suspendido o baneado")
 
-    # Buscar al reportado por correo
     reported_row = db.execute(
-        text("SELECT id, status, nombre FROM usuarios WHERE correo=:c"),
-        {"c": body.reported_correo}
+        text("SELECT id, status, nombre FROM usuarios WHERE id=:id"),
+        {"id": body.reported_id}
     ).fetchone()
     if not reported_row:
         raise HTTPException(status_code=404, detail="El usuario reportado no existe en el sistema")
@@ -298,7 +297,7 @@ async def get_moderation_users(
 
     rows = db.execute(text("""
         SELECT
-            u.id, u.nombre, u.correo, u.status, u.strikes_count, u.ban_until,
+            u.id, u.nombre, u.status, u.strikes_count, u.ban_until,
             mc.id            AS case_id,
             mc.voting_deadline,
             mc.keep_count,
@@ -320,7 +319,6 @@ async def get_moderation_users(
         "users": [{
             "id":              r.id,
             "nombre":          r.nombre,
-            "correo":          r.correo,
             "status":          r.status,
             "strikes_count":   r.strikes_count,
             "ban_until":       r.ban_until.isoformat() if r.ban_until else None,
@@ -496,7 +494,7 @@ async def get_moderation_publications(
     rows = db.execute(text("""
         SELECT
             p.cid_content, p.titulo, p.report_count, p.status,
-            u.nombre AS autor_nombre, u.correo AS autor_correo,
+            u.nombre AS autor_nombre,
             c.name  AS categoria,
             pmc.id              AS case_id,
             pmc.voting_deadline,
@@ -520,7 +518,6 @@ async def get_moderation_publications(
             "cid":             r.cid_content,
             "titulo":          r.titulo,
             "autor":           r.autor_nombre,
-            "autor_correo":    r.autor_correo,
             "categoria":       r.categoria or "General",
             "report_count":    r.report_count,
             "status":          r.status,
@@ -712,7 +709,6 @@ async def get_moderation_comments(
             cmc.voting_deadline,
             COALESCE(c.titulo, '')    AS titulo,
             COALESCE(u.nombre, '')    AS autor,
-            COALESCE(u.correo, '')    AS autor_correo,
             (SELECT COUNT(*) FROM comment_reports
              WHERE comment_cid=cmc.comment_cid) AS report_count,
             (SELECT voto FROM comment_moderation_votes
@@ -731,7 +727,6 @@ async def get_moderation_comments(
             "publication_cid": r.publication_cid,
             "titulo":          r.titulo,
             "autor":           r.autor,
-            "autor_correo":    r.autor_correo,
             "report_count":    r.report_count,
             "case_id":         r.case_id,
             "voting_deadline": r.voting_deadline.isoformat(),
