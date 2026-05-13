@@ -30,9 +30,10 @@ async def login(
     - **password**: User password.
     """
     try:
+        from datetime import datetime
         # Check if user exists and verify password
         query_user = text(
-            "SELECT id, nombre, password, created_at FROM usuarios WHERE correo = :correo")
+            "SELECT id, nombre, password, status, ban_until, created_at FROM usuarios WHERE correo = :correo")
         user = db.execute(query_user, {"correo": user_data.correo}).fetchone()
 
         if not user or not verifyPassword(user_data.password, user.password):
@@ -42,6 +43,31 @@ async def login(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        # Auto-recuperar suspensión temporal vencida
+        if user.status == 'SUSPENDIDO' and user.ban_until and user.ban_until <= datetime.now():
+            db.execute(text(
+                "UPDATE usuarios SET status='NORMAL', ban_until=NULL WHERE id=:id"
+            ), {"id": user.id})
+            db.commit()
+            status_actual = 'NORMAL'
+        else:
+            status_actual = user.status
+
+        # Verificar antigüedad de boleta (10 semestres = 5 años)
+        año_ingreso = int(str(user.id)[:4])
+        if datetime.now().year >= año_ingreso + 5 and status_actual not in ('BANEADO',):
+            db.execute(text(
+                "UPDATE usuarios SET status='SUSPENDIDO', ban_until=NULL WHERE id=:id AND status != 'BANEADO'"
+            ), {"id": user.id})
+            db.commit()
+            raise HTTPException(
+                status_code=403,
+                detail="Tu tiempo en la plataforma ha concluido (más de 10 semestres). Tu cuenta ha sido suspendida de forma indefinida.",
+            )
+
+        if status_actual == 'BANEADO':
+            raise HTTPException(status_code=403, detail="Tu cuenta ha sido baneada permanentemente de la plataforma.")
+
         # Generate JWT token with user ID
         access_token = genTokenUser(user.id)
         return {
@@ -49,6 +75,7 @@ async def login(
             "token_type": "bearer",
             "nombre": user.nombre,
             "fecha_registro": user.created_at.strftime("%d/%m/%Y") if user.created_at else None,
+            "status": status_actual,
         }
     except HTTPException:
         raise
@@ -84,6 +111,15 @@ async def register(
             raise HTTPException(
                 status_code=400,
                 detail="El correo electrónico o la boleta ya están registrados."
+            )
+
+        # Bloquear boletas con más de 10 semestres (5 años)
+        from datetime import datetime
+        año_ingreso = int(str(user_data.boleta)[:4])
+        if datetime.now().year >= año_ingreso + 5:
+            raise HTTPException(
+                status_code=400,
+                detail="No es posible registrarse: tu boleta indica más de 10 semestres en la institución.",
             )
 
         # Validación SAES obligatoria
