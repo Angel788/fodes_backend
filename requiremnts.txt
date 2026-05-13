@@ -69,6 +69,7 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 dag-cbor==0.3.3
 multiformats==0.3.1
+apscheduler==3.10.4
 beautifulsoup4
 pyzbar
 opencv-python-headless
