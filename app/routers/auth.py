@@ -54,8 +54,8 @@ async def login(
             status_actual = user.status
 
         # Verificar antigüedad de boleta (10 semestres = 5 años)
-        año_ingreso = int(str(user.id)[:4])
-        if datetime.now().year >= año_ingreso + 5 and status_actual not in ('BANEADO',):
+        anio_ingreso = int(str(user.id)[:4])
+        if datetime.now().year >= anio_ingreso + 5 and status_actual not in ('BANEADO',):
             db.execute(text(
                 "UPDATE usuarios SET status='SUSPENDIDO', ban_until=NULL WHERE id=:id AND status != 'BANEADO'"
             ), {"id": user.id})
@@ -115,8 +115,8 @@ async def register(
 
         # Bloquear boletas con más de 10 semestres (5 años)
         from datetime import datetime
-        año_ingreso = int(str(user_data.boleta)[:4])
-        if datetime.now().year >= año_ingreso + 5:
+        anio_ingreso = int(str(user_data.boleta)[:4])
+        if datetime.now().year >= anio_ingreso + 5:
             raise HTTPException(
                 status_code=400,
                 detail="No es posible registrarse: tu boleta indica más de 10 semestres en la institución.",
