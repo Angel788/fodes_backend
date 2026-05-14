@@ -10,20 +10,20 @@ router = APIRouter(prefix="/participation", tags=["Participation"])
 
 # ── Niveles ──────────────────────────────────────────────────────
 LEVELS = [
-    (45, 'Referente solidario',   '#FF895E', 'Tu ayuda inspira a otros'),
-    (35, 'Colaborador confiable', '#4A90E2', 'La comunidad confía en ti'),
-    (20, 'Apoyo activo',          '#4FB6A6', 'Ayudar ya es parte de ti'),
-    (10, 'Colaborador',           '#94E9AE', 'Tus acciones ayudan'),
-    (5,  'Participante',          '#8EC5D1', 'Formas parte de la comunidad'),
+    (60, 'Referente solidario',   '#FF895E', 'Tu ayuda inspira a otros'),
+    (50, 'Colaborador confiable', '#4A90E2', 'La comunidad confía en ti'),
+    (40, 'Apoyo activo',          '#4FB6A6', 'Ayudar ya es parte de ti'),
+    (25, 'Colaborador',           '#94E9AE', 'Tus acciones ayudan'),
+    (10,  'Participante',          '#8EC5D1', 'Formas parte de la comunidad'),
 ]
 
 # Puntos máximos por tipo de acción al día (anti-abuso)
 DAILY_LIMITS = {
-    'CREATE_POST':          15,
-    'CREATE_COMMENT':       12,
-    'CREATE_REPLY':         12,
-    'REACTION':              5,
-    'MODERATION_VOTE':       5,
+    'CREATE_POST':          10,
+    'CREATE_COMMENT':       4,
+    'CREATE_REPLY':         4,
+    'REACTION':              2,
+    'MODERATION_VOTE':       3,
     'HIGH_RATING_GIVEN':     4,
     'HIGH_RATING_RECEIVED': None,
 }
