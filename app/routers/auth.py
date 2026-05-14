@@ -135,8 +135,8 @@ async def register(
         # Hash password and insert user
         hashed_password = genHashPassword(user_data.password)
         query_insert = text("""
-            INSERT INTO usuarios (id, nombre, password)
-            VALUES (:boleta, :nombre, :password_hash)
+            INSERT INTO usuarios (id, nombre, password, fecha_aceptacion_terminos)
+            VALUES (:boleta, :nombre, :password_hash, NOW())
         """)
 
         db.execute(query_insert, {
