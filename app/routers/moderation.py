@@ -103,6 +103,25 @@ def _resolve_expired(db: Session) -> None:
     if expired:
         db.commit()
 
+    # Limpiar publicaciones EN_REVISION sin caso activo (quedaron huérfanas)
+    orphaned = db.execute(text("""
+        SELECT p.cid_content FROM publications p
+        WHERE p.status = 'EN_REVISION'
+        AND NOT EXISTS (
+            SELECT 1 FROM publication_moderation_cases pmc
+            WHERE pmc.publication_cid = p.cid_content AND pmc.status = 'OPEN'
+        )
+    """)).fetchall()
+    for pub in orphaned:
+        db.execute(text("""
+            UPDATE publications SET status='NORMAL', report_count=0
+            WHERE cid_content=:cid
+        """), {"cid": pub.cid_content})
+        db.execute(text("DELETE FROM publication_reports WHERE publication_cid=:cid"),
+                   {"cid": pub.cid_content})
+    if orphaned:
+        db.commit()
+
 
 def _resolve_expired_publications(db: Session) -> None:
     """Resuelve casos de publicaciones cuyo periodo de 24 h ya venció."""
@@ -621,6 +640,25 @@ def _resolve_expired_comments(db: Session) -> None:
                    {"cid": case.comment_cid})
 
     if expired:
+        db.commit()
+
+    # Limpiar comentarios EN_REVISION sin caso activo
+    orphaned = db.execute(text("""
+        SELECT c.cid_content FROM comments c
+        WHERE c.status = 'EN_REVISION'
+        AND NOT EXISTS (
+            SELECT 1 FROM comment_moderation_cases cmc
+            WHERE cmc.comment_cid = c.cid_content AND cmc.status = 'OPEN'
+        )
+    """)).fetchall()
+    for com in orphaned:
+        db.execute(text("""
+            UPDATE comments SET status='NORMAL', report_count=0
+            WHERE cid_content=:cid
+        """), {"cid": com.cid_content})
+        db.execute(text("DELETE FROM comment_reports WHERE comment_cid=:cid"),
+                   {"cid": com.cid_content})
+    if orphaned:
         db.commit()
 
 
