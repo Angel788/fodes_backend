@@ -16,7 +16,7 @@ from app.routers.participation import award_points
 router = APIRouter(prefix="/moderation", tags=["Moderation"])
 limiter = Limiter(key_func=get_remote_address)
 
-REPORT_THRESHOLD = 15
+REPORT_THRESHOLD = 10
 VOTE_HOURS = 24
 SUSPENSION_DAYS = {1: 30, 2: 60}  # strike → días de suspensión
 
