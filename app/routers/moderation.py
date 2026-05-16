@@ -745,7 +745,7 @@ async def get_moderation_comments(
             cmc.keep_count,
             cmc.remove_count,
             cmc.voting_deadline,
-            COALESCE(c.titulo, '')    AS titulo,
+            COALESCE(p.titulo, '')    AS titulo_publicacion,
             COALESCE(u.nombre, '')    AS autor,
             (SELECT COUNT(*) FROM comment_reports
              WHERE comment_cid=cmc.comment_cid) AS report_count,
@@ -753,6 +753,7 @@ async def get_moderation_comments(
              WHERE case_id=cmc.id AND voter_id=:uid LIMIT 1) AS mi_voto
         FROM comment_moderation_cases cmc
         LEFT JOIN comments c ON c.cid_content = cmc.comment_cid
+        LEFT JOIN publications p ON p.cid_content = cmc.publication_cid
         LEFT JOIN usuarios u ON u.id = c.id_autor
         WHERE cmc.status = 'OPEN'
         ORDER BY cmc.created_at DESC
@@ -761,10 +762,10 @@ async def get_moderation_comments(
     return {
         "status": "success",
         "comments": [{
-            "cid":             r.comment_cid,
-            "publication_cid": r.publication_cid,
-            "titulo":          r.titulo,
-            "autor":           r.autor,
+            "cid":               r.comment_cid,
+            "publication_cid":   r.publication_cid,
+            "titulo_publicacion": r.titulo_publicacion,
+            "autor":             r.autor,
             "report_count":    r.report_count,
             "case_id":         r.case_id,
             "voting_deadline": r.voting_deadline.isoformat(),
