@@ -471,7 +471,6 @@ async def report_publication(
     db.execute(text("""
         UPDATE publications SET report_count = report_count + 1 WHERE cid_content=:cid
     """), {"cid": body.publication_cid})
-    db.commit()
 
     total = db.execute(text("""
         SELECT report_count FROM publications WHERE cid_content=:cid
@@ -492,8 +491,9 @@ async def report_publication(
             db.execute(text("""
                 UPDATE publications SET status='EN_REVISION' WHERE cid_content=:cid
             """), {"cid": body.publication_cid})
-            db.commit()
             en_revision = True
+
+    db.commit()
 
     return {
         "status":        "success",
