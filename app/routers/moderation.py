@@ -473,8 +473,8 @@ async def report_publication(
     """), {"cid": body.publication_cid})
 
     total = db.execute(text("""
-        SELECT report_count FROM publications WHERE cid_content=:cid
-    """), {"cid": body.publication_cid}).fetchone().report_count
+        SELECT COUNT(*) AS c FROM publication_reports WHERE publication_cid=:cid
+    """), {"cid": body.publication_cid}).fetchone().c
 
     en_revision = False
     if total >= PUB_REPORT_THRESHOLD and pub.status == 'NORMAL':
