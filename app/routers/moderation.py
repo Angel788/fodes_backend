@@ -267,19 +267,16 @@ async def report_user(
     if dup:
         raise HTTPException(status_code=409, detail="Ya reportaste a este usuario anteriormente")
 
-    # Insertar reporte
+    # Insertar reporte y abrir caso si se alcanza el umbral — todo en un solo commit
     db.execute(text("""
         INSERT INTO user_reports (reporter_id, reported_id, motivo, created_at)
         VALUES (:r, :d, :m, NOW())
     """), {"r": id_reporter, "d": reported_id, "m": body.motivo})
-    db.commit()
 
-    # Contar reportes únicos totales
+    # Contar reportes únicos totales (dentro de la misma transacción)
     total = db.execute(text("""
         SELECT COUNT(*) as c FROM user_reports WHERE reported_id=:id
     """), {"id": reported_id}).fetchone().c
-
-    print(f"[DEBUG report_user] reported_id={reported_id!r} status={reported_row.status!r} total={total} threshold={REPORT_THRESHOLD}")
 
     # Entrar a moderación si se alcanzó el umbral y no hay caso abierto
     en_revision = False
@@ -289,24 +286,18 @@ async def report_user(
             WHERE target_id=:id AND status='OPEN'
         """), {"id": reported_id}).fetchone()
 
-        print(f"[DEBUG report_user] open_case={open_case}")
-
         if not open_case:
-            try:
-                deadline = datetime.now() + timedelta(hours=VOTE_HOURS)
-                db.execute(text("""
-                    INSERT INTO user_moderation_cases (target_id, status, voting_deadline)
-                    VALUES (:id, 'OPEN', :dl)
-                """), {"id": reported_id, "dl": deadline})
-                db.execute(text("""
-                    UPDATE usuarios SET status='EN_REVISION' WHERE id=:id
-                """), {"id": reported_id})
-                db.commit()
-                en_revision = True
-                print(f"[DEBUG report_user] caso creado OK para {reported_id}")
-            except Exception as e:
-                print(f"[DEBUG report_user] ERROR al crear caso: {e}")
-                db.rollback()
+            deadline = datetime.now() + timedelta(hours=VOTE_HOURS)
+            db.execute(text("""
+                INSERT INTO user_moderation_cases (target_id, status, voting_deadline)
+                VALUES (:id, 'OPEN', :dl)
+            """), {"id": reported_id, "dl": deadline})
+            db.execute(text("""
+                UPDATE usuarios SET status='EN_REVISION' WHERE id=:id
+            """), {"id": reported_id})
+            en_revision = True
+
+    db.commit()
 
     return {
         "status":       "success",
